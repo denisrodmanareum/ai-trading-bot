@@ -1,0 +1,73 @@
+:root {
+  /* B&W Pro Palette */
+  --bg-dark: #000000;
+  --bg-panel: #050505;
+  --bg-panel-hover: #0a0a0a;
+
+  --border-color: #151515;
+  --border-dim: #0f0f0f;
+
+  --text-primary: #ffffff;
+  --text-secondary: #888888;
+  --text-dim: #444444;
+
+  /* Monochromatic Accents */
+  --accent-primary: #ffffff;
+  --accent-dim: #333333;
+
+  /* Critical Logic Colors (Green/Red Preserved) */
+  --accent-success: #00b07c;
+  --accent-danger: #ff5b5b;
+  --accent-warning: #f59e0b;
+
+  /* Spacing */
+  --header-height: 48px;
+  --gap-xs: 4px;
+  --gap-sm: 8px;
+  --gap-md: 12px;
+  --radius-sm: 2px;
+  --font-mono: 'JetBrains Mono', 'Roboto Mono', monospace;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg-dark);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Roboto', 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* Support browser zoom and long pages */
+}
+
+/* Glassmorphism/Panel Utility */
+.glass-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Scrollbar Customization */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}

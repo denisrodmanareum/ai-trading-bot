@@ -1,0 +1,40 @@
+# System
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# Javascript / Frontend
+node_modules/
+build/
+dist/
+.npm
+frontend/node_modules/
+frontend/build/
+
+# Database & Data
+*.db
+*.sqlite3
+backend/data/
+backend/database/
+backend/models/
+backend/app/api/__pycache__/
+backend/app/core/__pycache__/
+backend/app/services/__pycache__/
+backend/ai/__pycache__/
+backend/trading/__pycache__/
+*.zip
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Security
+*.key
+*.pub

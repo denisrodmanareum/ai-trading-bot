@@ -1,0 +1,28 @@
+
+
+@router.get("/recent-trades")
+async def get_recent_trades(symbol: str = "BTCUSDT", limit: int = 30):
+    """Get recent market trades for display in Last Trades panel"""
+    try:
+        import app.main as main
+        
+        if main.binance_client is None:
+            raise HTTPException(status_code=503, detail="Binance not connected")
+        
+        # Fetch recent trades from Binance
+        trades = await main.binance_client.client.futures_recent_trades(symbol=symbol, limit=limit)
+        
+        # Format for frontend
+        formatted_trades = [{
+            "id": t['id'],
+            "price": t['price'],
+            "qty": t['qty'],
+            "time": t['time'],
+            "is_buyer_maker": t['isBuyerMaker']  # True = sell order filled (red), False = buy order filled (green)
+        } for t in trades]
+        
+        return formatted_trades
+        
+    except Exception as e:
+        logger.error(f"Failed to get recent trades: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

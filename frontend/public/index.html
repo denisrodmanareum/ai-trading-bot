@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ANGEL AREUM AI BOT</title>
+</head>
+<body>
+  <!-- Prevent MetaMask auto-connection (not used in this app) -->
+  <script>
+    // Block MetaMask from auto-connecting - this app uses Binance API, not Web3
+    if (window.ethereum) {
+      window.ethereum.autoRefreshOnNetworkChange = false;
+    }
+    // Suppress MetaMask connection errors
+    window.addEventListener('unhandledrejection', function(event) {
+      if (event.reason && event.reason.message && 
+          event.reason.message.includes('MetaMask')) {
+        event.preventDefault();
+        console.log('[AI Trading Bot] MetaMask connection suppressed - not required for this app');
+      }
+    });
+  </script>
+  <div id="root"></div>
+</body>
+</html>

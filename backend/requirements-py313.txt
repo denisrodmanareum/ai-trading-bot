@@ -1,0 +1,39 @@
+# FastAPI and Server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+websockets==14.1
+
+# Binance API
+python-binance==1.0.19
+ccxt==4.4.41
+
+# AI/ML - Python 3.13 호환 버전
+torch==2.5.1
+stable-baselines3==2.4.0
+gymnasium==1.0.0
+numpy==2.2.1
+pandas==2.2.3
+scikit-learn==1.6.1
+
+# Technical Analysis
+ta==0.11.0
+pandas-ta==0.3.14b
+
+# Database
+sqlalchemy==2.0.36
+aiosqlite==0.20.0
+
+# Utilities
+python-dotenv==1.0.1
+pydantic==2.10.6
+pydantic-settings==2.7.1
+
+# Logging
+loguru==0.7.3
+
+# Async
+aiohttp==3.11.11
+
+# Date/Time
+python-dateutil==2.9.0.post0
