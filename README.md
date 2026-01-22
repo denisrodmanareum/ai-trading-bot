@@ -32,14 +32,44 @@
 - **Node.js**: 16 이상
 - **바이낸스 계정**: Futures API 키 필요
 
-### 1. 저장소 클론
+### ⚡ 방법 1: 자동 설치 (추천) - 1분 완료!
+
+```bash
+# 1. 저장소 클론
+git clone https://github.com/denisrodmanareum/ai-trading-bot.git
+cd ai-trading-bot
+
+# 2. 자동 설치 실행 (모든 것을 자동 설정)
+setup.bat
+
+# 3. API 키 입력
+notepad backend\.env
+
+# 4. 실행!
+start_local.bat
+```
+
+**끝!** 다른 복잡한 설정 필요 없습니다! 🎉
+
+`setup.bat`이 자동으로 처리:
+- ✅ Python 가상환경 생성
+- ✅ 모든 패키지 설치 (pip + npm)
+- ✅ .env 파일 생성
+- ✅ 데이터베이스 초기화
+- ✅ 필요한 폴더 생성
+
+---
+
+### 🔧 방법 2: 수동 설치
+
+#### 1. 저장소 클론
 
 ```bash
 git clone https://github.com/denisrodmanareum/ai-trading-bot.git
 cd ai-trading-bot
 ```
 
-### 2. 백엔드 설정
+#### 2. 백엔드 설정
 
 ```bash
 cd backend
@@ -66,7 +96,7 @@ pip install -r requirements.txt
 python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### 3. 프론트엔드 설정
+#### 3. 프론트엔드 설정
 
 ```bash
 cd frontend

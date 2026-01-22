@@ -8,8 +8,55 @@
 - [ ] Python 3.11 이상
 - [ ] Node.js 16 이상
 - [ ] Git
+- [ ] 바이낸스 API 키
 
-## 🎯 5분 설치 (Windows)
+## ⚡ 1분 자동 설치 (Windows) - 추천!
+
+### 1단계: 저장소 클론
+
+```bash
+git clone https://github.com/denisrodmanareum/ai-trading-bot.git
+cd ai-trading-bot
+```
+
+### 2단계: 자동 설치 실행
+
+```bash
+setup.bat
+```
+
+**끝!** 이 스크립트가 자동으로:
+- ✅ Python 가상환경 생성
+- ✅ 모든 Python 패키지 설치
+- ✅ .env 파일 생성
+- ✅ 데이터베이스 초기화
+- ✅ 프론트엔드 패키지 설치
+- ✅ 필요한 폴더 생성
+
+### 3단계: API 키 입력
+
+```bash
+# backend\.env 파일을 열어서 수정:
+notepad backend\.env
+```
+
+```env
+BINANCE_API_KEY=실제_API_키
+BINANCE_API_SECRET=실제_시크릿_키
+BINANCE_TESTNET=True
+```
+
+### 4단계: 실행
+
+```bash
+start_local.bat
+```
+
+브라우저가 자동으로 열립니다! 🎉
+
+---
+
+## 🎯 5분 수동 설치 (Windows)
 
 ### 1단계: 저장소 클론
 
