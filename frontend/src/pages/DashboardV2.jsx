@@ -27,10 +27,10 @@ function DashboardV2() {
 
       if (balanceRes.ok) setBalance(await balanceRes.json());
       if (positionsRes.ok) {
-         const posData = await positionsRes.json();
-         // positions API returns { positions: [...] } or array directly depending on implementation
-         // Based on previous check, it returns { positions: [...] }
-         setPositions(posData.positions || []);
+        const posData = await positionsRes.json();
+        // positions API returns { positions: [...] } or array directly depending on implementation
+        // Based on previous check, it returns { positions: [...] }
+        setPositions(posData.positions || []);
       }
       if (tradesRes.ok) {
         const tradeData = await tradesRes.json();
@@ -81,12 +81,12 @@ function DashboardV2() {
 
   return (
     <div style={{ background: '#050505', minHeight: '100vh', color: '#e0e0e0', padding: '1.5rem', fontFamily: '"Inter", sans-serif' }}>
-      
+
       {/* 1. Status Header */}
-      <header style={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
+      <header style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         marginBottom: '2rem',
         padding: '1rem',
         borderBottom: '1px solid #222'
@@ -97,24 +97,24 @@ function DashboardV2() {
           </h1>
           <p style={{ fontSize: '0.8rem', color: '#666', marginTop: '0.25rem' }}>Automated Trading System v4.0</p>
         </div>
-        
+
         <div style={{ textAlign: 'right' }}>
-           <div style={{ fontSize: '0.7rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Balance</div>
-           <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#fff' }}>{formatMoney(totalBalance)}</div>
-           <div style={{ fontSize: '0.8rem', color: pnlColor }}>
-             {unrealizedPnl >= 0 ? '+' : ''}{formatMoney(unrealizedPnl)} (Unrealized)
-           </div>
+          <div style={{ fontSize: '0.7rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Balance</div>
+          <div style={{ fontSize: '1.5rem', fontWeight: '700', color: '#fff' }}>{formatMoney(totalBalance)}</div>
+          <div style={{ fontSize: '0.8rem', color: pnlColor }}>
+            {unrealizedPnl >= 0 ? '+' : ''}{formatMoney(unrealizedPnl)} (Unrealized)
+          </div>
         </div>
       </header>
 
       {/* 2. Main Content */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '1.5rem' }}>
-        
+
         {/* Active Positions Card */}
         <div style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '12px', padding: '1.5rem', boxShadow: '0 4px 20px rgba(0,0,0,0.2)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-             <h2 style={{ fontSize: '1.1rem', fontWeight: '700', margin: 0 }}>📊 Active Positions</h2>
-             {positions.length > 0 && <span style={{ fontSize: '0.7rem', background: '#222', padding: '2px 8px', borderRadius: '4px' }}>{positions.length} OPEN</span>}
+            <h2 style={{ fontSize: '1.1rem', fontWeight: '700', margin: 0 }}>📊 Active Positions</h2>
+            {positions.length > 0 && <span style={{ fontSize: '0.7rem', background: '#222', padding: '2px 8px', borderRadius: '4px' }}>{positions.length} OPEN</span>}
           </div>
 
           {positions.length === 0 ? (
@@ -127,20 +127,26 @@ function DashboardV2() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               {positions.map((pos, idx) => {
                 const isLong = Number(pos.position_amt) > 0;
-                const pnl = Number(pos.unRealizedProfit);
-                const roe = (pnl / (Number(pos.initialMargin) || 1)) * 100; // Approx ROE
-                
+                const pnl = Number(pos.unrealized_pnl || 0);
+                const entryPrice = Number(pos.entry_price || 0);
+                const amt = Math.abs(Number(pos.position_amt));
+                const lev = Number(pos.leverage || 1);
+
+                // Calculate ROE based on initial margin
+                const initialMargin = (amt * entryPrice) / lev;
+                const roe = initialMargin > 0 ? (pnl / initialMargin) * 100 : 0;
+
                 return (
-                  <div key={idx} style={{ 
-                    padding: '1rem', 
-                    background: '#111', 
-                    borderRadius: '8px', 
-                    borderLeft: `4px solid ${pnl >= 0 ? '#00b07c' : '#ff4b4b'}` 
+                  <div key={idx} style={{
+                    padding: '1rem',
+                    background: '#111',
+                    borderRadius: '8px',
+                    borderLeft: `4px solid ${pnl >= 0 ? '#00b07c' : '#ff4b4b'}`
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                       <span style={{ fontWeight: '700', fontSize: '1rem' }}>{pos.symbol}</span>
-                      <span style={{ 
-                        color: isLong ? '#00b07c' : '#ff4b4b', 
+                      <span style={{
+                        color: isLong ? '#00b07c' : '#ff4b4b',
                         background: isLong ? 'rgba(0,176,124,0.1)' : 'rgba(255,75,75,0.1)',
                         padding: '2px 6px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold'
                       }}>
@@ -149,27 +155,27 @@ function DashboardV2() {
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
-                       <div>
-                         <div style={{ fontSize: '0.7rem', color: '#666' }}>Entry Price</div>
-                         <div style={{ fontSize: '0.9rem' }}>{Number(pos.entryPrice).toLocaleString()}</div>
-                       </div>
-                       <div style={{ textAlign: 'right' }}>
-                          <div style={{ fontSize: '0.7rem', color: '#666' }}>PnL (ROE)</div>
-                          <div style={{ fontSize: '0.9rem', fontWeight: '700', color: pnl >= 0 ? '#00b07c' : '#ff4b4b' }}>
-                            {pnl >= 0 ? '+' : ''}{Number(pnl).toFixed(2)} ({roe.toFixed(2)}%)
-                          </div>
-                       </div>
+                      <div>
+                        <div style={{ fontSize: '0.7rem', color: '#666' }}>Entry Price</div>
+                        <div style={{ fontSize: '0.9rem' }}>{entryPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })}</div>
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.7rem', color: '#666' }}>PnL (ROE)</div>
+                        <div style={{ fontSize: '0.9rem', fontWeight: '700', color: pnl >= 0 ? '#00b07c' : '#ff4b4b' }}>
+                          {pnl >= 0 ? '+' : ''}{Number(pnl).toFixed(2)} ({roe.toFixed(2)}%)
+                        </div>
+                      </div>
                     </div>
 
-                    <button 
+                    <button
                       onClick={() => handleClosePosition(pos.symbol)}
-                      style={{ 
-                        width: '100%', 
-                        padding: '0.5rem', 
-                        background: '#1a1a1a', 
-                        border: '1px solid #333', 
-                        color: '#aaa', 
-                        borderRadius: '4px', 
+                      style={{
+                        width: '100%',
+                        padding: '0.5rem',
+                        background: '#1a1a1a',
+                        border: '1px solid #333',
+                        color: '#aaa',
+                        borderRadius: '4px',
                         cursor: 'pointer',
                         fontSize: '0.8rem',
                         transition: 'all 0.2s'
@@ -189,47 +195,47 @@ function DashboardV2() {
         {/* Recent Activity Card */}
         <div style={{ background: '#0a0a0a', border: '1px solid #1a1a1a', borderRadius: '12px', padding: '1.5rem' }}>
           <h2 style={{ fontSize: '1.1rem', fontWeight: '700', marginBottom: '1.5rem' }}>📜 Recent Activity</h2>
-          
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-             {recentTrades.length === 0 ? (
-               <div style={{ color: '#444', fontStyle: 'italic', fontSize: '0.9rem' }}>최근 거래 내역이 없습니다.</div>
-             ) : (
-               recentTrades.map((trade, idx) => (
-                 <div key={idx} style={{ 
-                   display: 'flex', 
-                   justifyContent: 'space-between', 
-                   alignItems: 'center',
-                   padding: '0.75rem', 
-                   background: '#111', 
-                   borderRadius: '6px',
-                   borderBottom: '1px solid #1a1a1a'
-                 }}>
-                    <div>
-                      <div style={{ fontSize: '0.85rem', fontWeight: '600' }}>{trade.symbol} <span style={{ color: '#666', fontWeight: '400' }}>{trade.action}</span></div>
-                      <div style={{ fontSize: '0.7rem', color: '#555' }}>
-                         {new Date(trade.timestamp).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                      </div>
+            {recentTrades.length === 0 ? (
+              <div style={{ color: '#444', fontStyle: 'italic', fontSize: '0.9rem' }}>최근 거래 내역이 없습니다.</div>
+            ) : (
+              recentTrades.map((trade, idx) => (
+                <div key={idx} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '0.75rem',
+                  background: '#111',
+                  borderRadius: '6px',
+                  borderBottom: '1px solid #1a1a1a'
+                }}>
+                  <div>
+                    <div style={{ fontSize: '0.85rem', fontWeight: '600' }}>{trade.symbol} <span style={{ color: '#666', fontWeight: '400' }}>{trade.action}</span></div>
+                    <div style={{ fontSize: '0.7rem', color: '#555' }}>
+                      {new Date(trade.timestamp).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                       <div style={{ fontSize: '0.85rem', color: (trade.pnl || 0) >= 0 ? '#00b07c' : '#ff4b4b', fontWeight: '700' }}>
-                         {(trade.pnl || 0) !== 0 ? `$${Number(trade.pnl).toFixed(2)}` : 'OPEN'}
-                       </div>
-                       <div style={{ fontSize: '0.7rem', color: '#555' }}>{trade.strategy || 'System'}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontSize: '0.85rem', color: (trade.pnl || 0) >= 0 ? '#00b07c' : '#ff4b4b', fontWeight: '700' }}>
+                      {(trade.pnl || 0) !== 0 ? `$${Number(trade.pnl).toFixed(2)}` : 'OPEN'}
                     </div>
-                 </div>
-               ))
-             )}
+                    <div style={{ fontSize: '0.7rem', color: '#555' }}>{trade.strategy || 'System'}</div>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
-          
-          <button 
+
+          <button
             onClick={() => navigate('/history')}
-            style={{ 
-              marginTop: '1rem', 
-              width: '100%', 
-              background: 'transparent', 
-              color: '#666', 
-              border: '1px dashed #333', 
-              padding: '0.5rem', 
+            style={{
+              marginTop: '1rem',
+              width: '100%',
+              background: 'transparent',
+              color: '#666',
+              border: '1px dashed #333',
+              padding: '0.5rem',
               borderRadius: '4px',
               cursor: 'pointer',
               fontSize: '0.8rem'
@@ -240,7 +246,7 @@ function DashboardV2() {
         </div>
 
       </div>
-      
+
     </div>
   );
 }
