@@ -3,6 +3,7 @@ Simplified Binance Futures Client
 """
 from binance import AsyncClient
 from loguru import logger
+import time
 from app.core.config import settings
 
 
@@ -20,7 +21,14 @@ class BinanceClient:
                 api_secret=settings.BINANCE_API_SECRET,
                 testnet=settings.BINANCE_TESTNET
             )
-            logger.info("✅ Binance Client initialized")
+            
+            # Sync server time to avoid -1021 error (Timestamp ahead)
+            res = await self.client.get_server_time()
+            server_time = res['serverTime']
+            local_time = int(time.time() * 1000)
+            self.client.timestamp_offset = server_time - local_time
+            
+            logger.info(f"✅ Binance Client initialized (Time Offset: {self.client.timestamp_offset}ms)")
         except Exception as e:
             logger.error(f"❌ Binance initialization failed: {e}")
             raise
