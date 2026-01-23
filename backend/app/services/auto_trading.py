@@ -13,6 +13,7 @@ from app.services.price_stream import PriceStreamService
 from app.services.websocket_manager import WebSocketManager
 from app.core.config import settings
 from trading.trading_strategy import StochasticTradingStrategy
+from app.services.notifications import notification_manager, NotificationType
 from ai.spike_detector import SpikeDetector
 from ai.market_regime import MarketRegimeDetector
 from ai.position_sizer import PositionSizer
@@ -136,6 +137,19 @@ class AutoTradingService:
         self.processing = False
         self.last_prediction_time = 0
         self.prediction_interval = 60 # Seconds (1 minute candles)
+
+        # Notification / Stats
+        self.bot_start_balance: Optional[float] = None
+        self.trade_stats = {"total": 0, "wins": 0}
+        self.last_trade_ts: float = 0.0
+        self.position_open_ts: dict[str, float] = {}
+        # Track per-symbol bracket orders (TP/SL)
+        # { "BTCUSDT": {"side":"LONG","qty":0.01,"entry_price":65000,"tp":66000,"sl":64500,"tp_order_id":123,"sl_order_id":456,"entry_ts":...}}
+        self.brackets: dict[str, Dict] = {}
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._daily_report_task: Optional[asyncio.Task] = None
+        self._last_error_notify_ts: float = 0.0
+        self._last_error_msg: str = ""
         
         # Risk Management
         self.risk_config = RiskConfig()
@@ -237,6 +251,8 @@ class AutoTradingService:
         try:
             account = await self.binance_client.get_account_info()
             self.daily_start_balance = account['balance']
+            if self.bot_start_balance is None:
+                self.bot_start_balance = account['balance']
             self.current_daily_loss = 0.0
             self.risk_status = "NORMAL"
             logger.info(f"Risk Monitor Initialized. Start Balance: ${self.daily_start_balance:.2f}")
@@ -245,6 +261,12 @@ class AutoTradingService:
             
         self.running = True
         logger.info("Auto Trading Started")
+
+        # Background notifications (heartbeat + daily report)
+        if self._heartbeat_task is None or self._heartbeat_task.done():
+            self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        if self._daily_report_task is None or self._daily_report_task.done():
+            self._daily_report_task = asyncio.create_task(self._daily_report_loop())
 
     async def check_risk_limits(self, account_info: Dict):
         """Check if trading should be stopped due to risk limits"""
@@ -301,6 +323,11 @@ class AutoTradingService:
         """Stop auto trading"""
         self.running = False
         await self.stop_shadow_mode() # Stop shadow too
+        for t in (self._heartbeat_task, self._daily_report_task):
+            if t and not t.done():
+                t.cancel()
+        self._heartbeat_task = None
+        self._daily_report_task = None
         logger.info("Auto Trading Stopped")
 
     async def start_shadow_mode(self, model_path: str = None, model_paths: list[str] = None):
@@ -385,6 +412,7 @@ class AutoTradingService:
                 await self._trade_logic(data)
             except Exception as e:
                 logger.error(f"AutoTrading error: {e}")
+                await self._notify_error(f"AutoTrading error: {e}", context={"symbol": data.get("symbol")})
             finally:
                 self.processing = False
 
@@ -403,6 +431,25 @@ class AutoTradingService:
         if position is None:
             logger.warning(f"Could not fetch position for {symbol}, skipping trade logic.")
             return
+
+        # Detect external close (TP/SL/manual) between candles: previously had position, now flat.
+        try:
+            prev_br = self.brackets.get(symbol)
+            current_amt = float(position.get("position_amt", 0))
+            if prev_br and current_amt == 0:
+                await self._handle_external_close(symbol=symbol, prev_bracket=prev_br, current_price=float(data.get("close", 0)))
+        except Exception:
+            pass
+
+        # Track position open time (best-effort)
+        try:
+            amt = float(position.get("position_amt", 0))
+            if amt != 0 and symbol not in self.position_open_ts:
+                self.position_open_ts[symbol] = time.time()
+            if amt == 0 and symbol in self.position_open_ts:
+                del self.position_open_ts[symbol]
+        except Exception:
+            pass
         # Need to construct the state dictionary expected by agent
         market_state = {
             'close': data['close'],
@@ -601,7 +648,16 @@ class AutoTradingService:
         logger.info(f"AI: {ai_action_name} | Rule: {tech_signal['action'] if tech_signal else 'None'} -> Final: {final_action_str} ({reason})")
         
         # 5. Execute Order (Main)
-        await self._execute_order(symbol, final_action, position, latest['close'], atr=market_state.get('atr', 0))
+        await self._execute_order(
+            symbol=symbol,
+            action=final_action,
+            position=position,
+            price=float(latest['close']),
+            atr=float(market_state.get('atr', 0)),
+            reason=reason,
+            leverage=int(leverage),
+            market_state=market_state
+        )
 
         # 5. Shadow Mode Logic
         if self.shadow_running and self.shadow_agent:
@@ -625,7 +681,17 @@ class AutoTradingService:
             except Exception as e:
                 logger.error(f"Shadow Logic Error: {e}")
 
-    async def _execute_order(self, symbol: str, action: int, position: Dict, price: float, atr: float = 0.0):
+    async def _execute_order(
+        self,
+        symbol: str,
+        action: int,
+        position: Dict,
+        price: float,
+        atr: float = 0.0,
+        reason: str = "",
+        leverage: int = 5,
+        market_state: Optional[Dict] = None,
+    ):
         """Execute order based on action"""
         current_amt = position['position_amt']
         
@@ -659,20 +725,82 @@ class AutoTradingService:
             if action == 1: # LONG
                 if current_amt <= 0: # If short or flat
                     if current_amt < 0: # Close short first
-                        await self.binance_client.place_market_order(symbol, "BUY", abs(current_amt), reduce_only=True)
+                        close_order = await self.binance_client.place_market_order(symbol, "BUY", abs(current_amt), reduce_only=True)
+                        await self._handle_close_notification(
+                            symbol=symbol,
+                            position=position,
+                            close_order=close_order,
+                            fallback_price=price,
+                            reason=f"FLIP_TO_LONG|{reason}".strip("|"),
+                        )
                     # Open long
                     order = await self.binance_client.place_market_order(symbol, "BUY", quantity)
                     logger.info("Executed LONG")
                     await self._broadcast_trade("LONG", symbol, quantity, order)
+                    entry_price, tp_price, sl_price = await self._setup_bracket_after_entry(
+                        symbol=symbol,
+                        side="LONG",
+                        quantity=quantity,
+                        leverage=leverage,
+                        order=order,
+                        fallback_price=price,
+                        atr=atr,
+                        market_state=market_state or {},
+                        reason=reason,
+                    )
+                    await self._handle_entry_notification(
+                        symbol=symbol,
+                        side="LONG",
+                        quantity=quantity,
+                        leverage=leverage,
+                        order=order,
+                        fallback_price=price,
+                        atr=atr,
+                        reason=reason,
+                        market_state=market_state or {},
+                        tp_price=tp_price,
+                        sl_price=sl_price,
+                    )
                     
             elif action == 2: # SHORT
                 if current_amt >= 0: # If long or flat
                     if current_amt > 0: # Close long first
-                         await self.binance_client.place_market_order(symbol, "SELL", abs(current_amt), reduce_only=True)
+                         close_order = await self.binance_client.place_market_order(symbol, "SELL", abs(current_amt), reduce_only=True)
+                         await self._handle_close_notification(
+                             symbol=symbol,
+                             position=position,
+                             close_order=close_order,
+                             fallback_price=price,
+                             reason=f"FLIP_TO_SHORT|{reason}".strip("|"),
+                         )
                     # Open short
                     order = await self.binance_client.place_market_order(symbol, "SELL", quantity)
                     logger.info("Executed SHORT")
                     await self._broadcast_trade("SHORT", symbol, quantity, order)
+                    entry_price, tp_price, sl_price = await self._setup_bracket_after_entry(
+                        symbol=symbol,
+                        side="SHORT",
+                        quantity=quantity,
+                        leverage=leverage,
+                        order=order,
+                        fallback_price=price,
+                        atr=atr,
+                        market_state=market_state or {},
+                        reason=reason,
+                    )
+                    await self._handle_entry_notification(
+                        symbol=symbol,
+                        side="SHORT",
+                        quantity=quantity,
+                        leverage=leverage,
+                        order=order,
+                        fallback_price=price,
+                        atr=atr,
+                        reason=reason,
+                        market_state=market_state or {},
+                        tp_price=tp_price,
+                        sl_price=sl_price,
+                    )
                     
             elif action == 3: # CLOSE
                 if current_amt != 0:
@@ -680,6 +808,13 @@ class AutoTradingService:
                     order = await self.binance_client.place_market_order(symbol, side, abs(current_amt), reduce_only=True)
                     logger.info("Closed Position")
                     await self._broadcast_trade("CLOSE", symbol, abs(current_amt), order)
+                    await self._handle_close_notification(
+                        symbol=symbol,
+                        position=position,
+                        close_order=order,
+                        fallback_price=price,
+                        reason=reason,
+                    )
                     
                     # Calculate PnL (Estimated)
                     # Robust Price Extraction
@@ -717,7 +852,7 @@ class AutoTradingService:
                     else: # Short Close
                         pnl = (entry_price - exit_price) * abs(current_amt)
                         
-                    await self._save_trade_to_db(symbol, "CLOSE", side, abs(current_amt), exit_price, pnl, "ai_ppo", commission=commission)
+                    await self._save_trade_to_db(symbol, "CLOSE", side, abs(current_amt), exit_price, pnl, "ai_ppo", reason=reason, commission=commission)
 
             # For Open Actions (LONG/SHORT)
             if action in [1, 2] and 'order' in locals():
@@ -760,12 +895,476 @@ class AutoTradingService:
                      price=avg_price,
                      pnl=0.0, # Opening capability, PnL is 0
                      strategy="ai_ppo",
+                      reason=reason,
                      commission=commission
                  )
 
         except Exception as e:
             logger.error(f"Order Execution Failed: {e}")
+            await self._notify_error(f"Order Execution Failed: {e}", context={"symbol": symbol, "action": action})
 
+    # -----------------------------
+    # Notifications (Telegram)
+    # -----------------------------
+    def _fmt_symbol(self, symbol: str) -> str:
+        if symbol.endswith("USDT") and len(symbol) > 4:
+            return f"{symbol[:-4]}/USDT"
+        return symbol
+
+    def _fmt_usdt(self, x: float) -> str:
+        try:
+            return f"{x:,.2f}"
+        except Exception:
+            return str(x)
+
+    def _fmt_qty(self, symbol: str, qty: float) -> str:
+        if symbol.endswith("USDT"):
+            base = symbol[:-4]
+        else:
+            base = symbol
+        # BTC is usually 3 decimals in this project
+        if base.upper() == "BTC":
+            return f"{qty:.3f} {base}"
+        return f"{qty:.4f} {base}"
+
+    def _format_duration(self, seconds: float) -> str:
+        seconds = max(0, int(seconds))
+        h = seconds // 3600
+        m = (seconds % 3600) // 60
+        if h > 0:
+            return f"{h}시간 {m}분"
+        return f"{m}분"
+
+    async def _notify_error(self, message: str, context: Optional[Dict] = None):
+        # Throttle error notifications (avoid spam)
+        now = time.time()
+        if message == self._last_error_msg and (now - self._last_error_notify_ts) < 300:
+            return
+        self._last_error_msg = message
+        self._last_error_notify_ts = now
+
+        if not notification_manager.enabled_channels.get("telegram", False):
+            return
+        try:
+            ctx = ""
+            if context and context.get("symbol"):
+                ctx = f" ({context.get('symbol')})"
+            await notification_manager.send(
+                NotificationType.SYSTEM_ERROR,
+                "System Error",
+                f"🚨 <b>[에러]</b>{ctx}\n{message}",
+                channels=["telegram"],
+            )
+        except Exception:
+            # don't crash trading on notification failures
+            pass
+
+    async def _handle_entry_notification(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        leverage: int,
+        order: Dict,
+        fallback_price: float,
+        atr: float,
+        reason: str,
+        market_state: Dict,
+        tp_price: float | None = None,
+        sl_price: float | None = None,
+    ):
+        if not notification_manager.enabled_channels.get("telegram", False):
+            return
+
+        # Robust avg price
+        avg_price = float(order.get("avgPrice", 0) or order.get("price", 0) or 0)
+        if avg_price == 0 and order.get("fills"):
+            fills = order["fills"]
+            avg_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / max(1e-9, sum(float(f["qty"]) for f in fills))
+        if avg_price == 0:
+            avg_price = float(fallback_price)
+
+        # Track open time for hold duration
+        self.position_open_ts[symbol] = time.time()
+        self.last_trade_ts = time.time()
+
+        s = self._fmt_symbol(symbol)
+        emoji = "🟢" if side == "LONG" else "🔴"
+        notional = avg_price * float(quantity)
+        tp_sl = ""
+        if tp_price and sl_price:
+            tp_sl = f"목표가: {self._fmt_usdt(tp_price)} / 손절가: {self._fmt_usdt(sl_price)}"
+        elif tp_price:
+            tp_sl = f"목표가: {self._fmt_usdt(tp_price)}"
+        elif sl_price:
+            tp_sl = f"손절가: {self._fmt_usdt(sl_price)}"
+
+        msg = (
+            f"🚀 <b>[진입]</b> {s} 포지션: {emoji} <b>{side}</b> ({leverage}x)\n"
+            f"진입가: <b>{self._fmt_usdt(avg_price)}</b> USDT\n"
+            f"수량: <b>{self._fmt_qty(symbol, float(quantity))}</b> (약 {self._fmt_usdt(notional)} USDT)\n"
+        )
+        if tp_sl:
+            msg += f"{tp_sl}\n"
+        if reason:
+            msg += f"사유: <code>{reason}</code>"
+
+        try:
+            await notification_manager.send(NotificationType.TRADE_EXECUTED, "Entry", msg, channels=["telegram"])
+        except Exception as e:
+            await self._notify_error(f"Telegram entry notify failed: {e}", context={"symbol": symbol})
+
+    async def _setup_bracket_after_entry(
+        self,
+        symbol: str,
+        side: str,
+        quantity: float,
+        leverage: int,
+        order: Dict,
+        fallback_price: float,
+        atr: float,
+        market_state: Dict,
+        reason: str,
+    ) -> tuple[float, float | None, float | None]:
+        """Compute TP/SL and place reduce-only bracket orders. Returns (entry_price, tp_price, sl_price)."""
+        # avg entry price
+        entry_price = float(order.get("avgPrice", 0) or order.get("price", 0) or 0)
+        if entry_price == 0 and order.get("fills"):
+            fills = order["fills"]
+            entry_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / max(1e-9, sum(float(f["qty"]) for f in fills))
+        if entry_price == 0:
+            entry_price = float(fallback_price)
+
+        tp_price: float | None = None
+        sl_price: float | None = None
+        try:
+            pos_amt = quantity if side == "LONG" else -quantity
+            sltp = self.sl_tp_ai.get_sl_tp_for_position(
+                position={"entry_price": entry_price, "position_amt": pos_amt, "unrealized_pnl": 0.0},
+                current_market_data={
+                    "close": entry_price,
+                    "atr": float(atr),
+                    "rsi": float(market_state.get("rsi", 50.0)),
+                    "macd": float(market_state.get("macd", 0.0)),
+                },
+            )
+            sl_price = float(sltp.get("sl_price")) if sltp.get("sl_price") is not None else None
+            tp_price = float(sltp.get("tp_price")) if sltp.get("tp_price") is not None else None
+        except Exception as e:
+            await self._notify_error(f"SL/TP compute failed: {e}", context={"symbol": symbol})
+
+        # Place bracket orders (best-effort)
+        try:
+            res = await self.binance_client.place_bracket_orders(
+                symbol=symbol,
+                position_side=side,
+                quantity=float(quantity),
+                stop_loss_price=sl_price,
+                take_profit_price=tp_price,
+            )
+            self.brackets[symbol] = {
+                "symbol": symbol,
+                "side": side,
+                "qty": float(quantity),
+                "leverage": int(leverage),
+                "entry_price": float(entry_price),
+                "tp": float(tp_price) if tp_price is not None else None,
+                "sl": float(sl_price) if sl_price is not None else None,
+                "tp_order_id": (res.get("tp") or {}).get("orderId") if res.get("tp") else None,
+                "sl_order_id": (res.get("sl") or {}).get("orderId") if res.get("sl") else None,
+                "entry_ts": time.time(),
+                "entry_reason": reason,
+            }
+        except Exception as e:
+            await self._notify_error(f"Bracket order placement failed: {e}", context={"symbol": symbol})
+
+        return entry_price, tp_price, sl_price
+
+    async def _handle_external_close(self, symbol: str, prev_bracket: Dict, current_price: float):
+        """
+        If a position is closed by exchange (TP/SL/manual) we won't see a CLOSE action.
+        Infer reason and notify + cleanup open orders.
+        """
+        # Attempt to infer exit price & pnl from recent trades (best-effort)
+        reason = "EXTERNAL_CLOSE"
+        tp = prev_bracket.get("tp")
+        sl = prev_bracket.get("sl")
+        side = prev_bracket.get("side")
+
+        # Rough infer by proximity to tp/sl
+        try:
+            if tp and side == "LONG" and current_price >= float(tp) * 0.999:
+                reason = "TP"
+            elif tp and side == "SHORT" and current_price <= float(tp) * 1.001:
+                reason = "TP"
+            elif sl and side == "LONG" and current_price <= float(sl) * 1.001:
+                reason = "SL"
+            elif sl and side == "SHORT" and current_price >= float(sl) * 0.999:
+                reason = "SL"
+        except Exception:
+            pass
+
+        # Cancel any remaining open orders
+        try:
+            await self.binance_client.cancel_open_orders(symbol)
+        except Exception:
+            pass
+
+        # Save to DB (estimated) + Notify as a synthetic close (we don't have exact exit fill here)
+        try:
+            entry_price = float(prev_bracket.get("entry_price", 0) or 0)
+            qty = float(prev_bracket.get("qty", 0) or 0)
+            lev = int(prev_bracket.get("leverage", 1) or 1)
+            if qty > 0 and entry_price > 0:
+                if side == "LONG":
+                    pnl = (current_price - entry_price) * qty
+                else:
+                    pnl = (entry_price - current_price) * qty
+                roe = ((pnl * lev) / (entry_price * qty)) * 100.0 if entry_price * qty > 0 else 0.0
+            else:
+                pnl = 0.0
+                roe = 0.0
+
+            try:
+                close_side = "SELL" if side == "LONG" else "BUY"
+                await self._save_trade_to_db(
+                    symbol=symbol,
+                    action="CLOSE",
+                    side=close_side,
+                    quantity=qty,
+                    price=float(current_price),
+                    pnl=float(pnl),
+                    strategy="ai_ppo",
+                    reason=reason,
+                    commission=0.0,
+                )
+            except Exception:
+                pass
+
+            hold = None
+            if symbol in self.position_open_ts:
+                hold = self._format_duration(time.time() - self.position_open_ts[symbol])
+                del self.position_open_ts[symbol]
+
+            s = self._fmt_symbol(symbol)
+            emoji = "💰" if pnl >= 0 else "🔻"
+            label = "익절" if reason == "TP" else ("손절" if reason == "SL" else "청산")
+            msg = (
+                f"{emoji} <b>[{label}]</b> {s}\n"
+                f"종료가(추정): <b>{self._fmt_usdt(current_price)}</b> USDT\n"
+                f"실현손익(추정): <b>{pnl:+.2f}</b> USDT\n"
+                f"수익률(ROE,추정): <b>{roe:+.2f}%</b>\n"
+            )
+            if hold:
+                msg += f"보유시간: {hold}\n"
+            msg += f"종료사유: <code>{reason}</code>"
+            if notification_manager.enabled_channels.get("telegram", False):
+                await notification_manager.send(NotificationType.POSITION_CLOSED, "Exit", msg, channels=["telegram"])
+        except Exception:
+            pass
+
+        # Cleanup bracket state
+        try:
+            if symbol in self.brackets:
+                del self.brackets[symbol]
+        except Exception:
+            pass
+    async def _handle_close_notification(
+        self,
+        symbol: str,
+        position: Dict,
+        close_order: Dict,
+        fallback_price: float,
+        reason: str,
+    ):
+        current_amt = float(position.get("position_amt", 0))
+        if current_amt == 0:
+            return
+
+        entry_price = float(position.get("entry_price", 0) or 0)
+        lev = int(position.get("leverage", 1) or 1)
+
+        exit_price = float(close_order.get("avgPrice", 0) or close_order.get("price", 0) or 0)
+        if exit_price == 0 and close_order.get("fills"):
+            fills = close_order["fills"]
+            exit_price = sum(float(f["price"]) * float(f["qty"]) for f in fills) / max(1e-9, sum(float(f["qty"]) for f in fills))
+        if exit_price == 0:
+            exit_price = float(fallback_price)
+
+        commission = 0.0
+        if close_order.get("fills"):
+            commission = sum(float(f.get("commission", 0)) for f in close_order["fills"])
+
+        qty = abs(current_amt)
+        side_str = "LONG" if current_amt > 0 else "SHORT"
+        close_side = "SELL" if current_amt > 0 else "BUY"
+        if current_amt > 0:
+            pnl = (exit_price - entry_price) * qty
+        else:
+            pnl = (entry_price - exit_price) * qty
+        net_pnl = pnl - commission
+        cost_basis = entry_price * qty
+        roe = 0.0
+        if cost_basis > 0 and lev > 0:
+            roe = (pnl * lev / cost_basis) * 100.0
+
+        # holding time
+        now = time.time()
+        hold = None
+        if symbol in self.position_open_ts:
+            hold = self._format_duration(now - self.position_open_ts[symbol])
+            del self.position_open_ts[symbol]
+        self.last_trade_ts = now
+
+        # update stats
+        self.trade_stats["total"] += 1
+        if net_pnl > 0:
+            self.trade_stats["wins"] += 1
+
+        # Save to DB (also covers flip-closes which previously weren't recorded)
+        try:
+            await self._save_trade_to_db(
+                symbol=symbol,
+                action="CLOSE",
+                side=close_side,
+                quantity=qty,
+                price=exit_price,
+                pnl=pnl,
+                strategy="ai_ppo",
+                reason=reason,
+                commission=commission,
+            )
+        except Exception:
+            pass
+
+        # Cancel remaining TP/SL orders for this symbol after closing the position
+        try:
+            await self.binance_client.cancel_open_orders(symbol)
+        except Exception:
+            pass
+
+        # Cleanup bracket state
+        try:
+            if symbol in self.brackets:
+                del self.brackets[symbol]
+        except Exception:
+            pass
+
+        # reason label
+        label = "청산"
+        if "TP" in (reason or "").upper():
+            label = "익절"
+        elif "SL" in (reason or "").upper() or "STOP" in (reason or "").upper():
+            label = "손절"
+
+        s = self._fmt_symbol(symbol)
+        pnl_sign = "+" if net_pnl >= 0 else ""
+        roe_sign = "+" if roe >= 0 else ""
+        emoji = "💰" if net_pnl >= 0 else "🔻"
+        msg = (
+            f"{emoji} <b>[{label}]</b> {s}\n"
+            f"종료가: <b>{self._fmt_usdt(exit_price)}</b> USDT\n"
+            f"실현손익: <b>{pnl_sign}{self._fmt_usdt(net_pnl)}</b> USDT\n"
+            f"수익률(ROE): <b>{roe_sign}{roe:.2f}%</b>\n"
+        )
+        if hold:
+            msg += f"보유시간: {hold}\n"
+        if reason:
+            msg += f"종료사유: <code>{reason}</code>\n"
+
+        # Append quick risk summary (best effort)
+        try:
+            account = await self.binance_client.get_account_info()
+            bal = float(account.get("balance", 0))
+            daily_pnl = bal - float(self.daily_start_balance or bal)
+            margin_ratio = 0.0
+            mb = float(account.get("margin_balance", 0) or 0)
+            mm = float(account.get("maint_margin", 0) or 0)
+            if mb > 0:
+                margin_ratio = (mm / mb) * 100.0
+            wr = (self.trade_stats["wins"] / self.trade_stats["total"] * 100.0) if self.trade_stats["total"] > 0 else 0.0
+            msg += (
+                f"\n📊 <b>[요약]</b> 잔고: <b>{self._fmt_usdt(bal)}</b> USDT | "
+                f"오늘: {daily_pnl:+.2f} USDT | 승률: {wr:.1f}% | 마진비율: {margin_ratio:.2f}%"
+            )
+        except Exception:
+            pass
+
+        if notification_manager.enabled_channels.get("telegram", False):
+            try:
+                await notification_manager.send(NotificationType.POSITION_CLOSED, "Exit", msg, channels=["telegram"])
+            except Exception as e:
+                await self._notify_error(f"Telegram exit notify failed: {e}", context={"symbol": symbol})
+
+    async def _heartbeat_loop(self):
+        """Send heartbeat every ~6 hours to confirm bot is alive."""
+        try:
+            while self.running:
+                await asyncio.sleep(6 * 3600)
+                if not self.running:
+                    break
+                if not notification_manager.enabled_channels.get("telegram", False):
+                    continue
+                now = time.time()
+                last_trade = "없음"
+                if self.last_trade_ts:
+                    last_trade = self._format_duration(now - self.last_trade_ts) + " 전"
+                msg = (
+                    "🫀 <b>[Heartbeat]</b> 봇 정상 작동 중. 대기/모니터링 중...\n"
+                    f"모드: <b>{self.strategy_config.mode}</b> | TF: <b>{self.strategy_config.selected_interval}</b>\n"
+                    f"마지막 거래: {last_trade}"
+                )
+                await notification_manager.send(NotificationType.PRICE_ALERT, "Heartbeat", msg, channels=["telegram"])
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            await self._notify_error(f"Heartbeat loop failed: {e}")
+
+    async def _daily_report_loop(self):
+        """Send daily report at 09:00 local time."""
+        try:
+            while self.running:
+                now_dt = datetime.now()
+                next_dt = now_dt.replace(hour=9, minute=0, second=0, microsecond=0)
+                if next_dt <= now_dt:
+                    next_dt = next_dt + timedelta(days=1)
+                await asyncio.sleep((next_dt - now_dt).total_seconds())
+                if not self.running:
+                    break
+                await self._send_daily_report()
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            await self._notify_error(f"Daily report loop failed: {e}")
+
+    async def _send_daily_report(self):
+        if not notification_manager.enabled_channels.get("telegram", False):
+            return
+        try:
+            account = await self.binance_client.get_account_info()
+            bal = float(account.get("balance", 0))
+            if self.bot_start_balance is None:
+                self.bot_start_balance = bal
+            daily_pnl = bal - float(self.daily_start_balance or bal)
+            cum_ret = 0.0
+            if self.bot_start_balance:
+                cum_ret = ((bal - self.bot_start_balance) / self.bot_start_balance) * 100.0
+            wr = (self.trade_stats["wins"] / self.trade_stats["total"] * 100.0) if self.trade_stats["total"] > 0 else 0.0
+            mb = float(account.get("margin_balance", 0) or 0)
+            mm = float(account.get("maint_margin", 0) or 0)
+            margin_ratio = (mm / mb) * 100.0 if mb > 0 else 0.0
+
+            msg = (
+                "📊 <b>[일일 리포트]</b>\n"
+                f"현재 잔고: <b>{self._fmt_usdt(bal)}</b> USDT\n"
+                f"오늘 손익: <b>{daily_pnl:+.2f}</b> USDT\n"
+                f"누적 수익률: <b>{cum_ret:+.2f}%</b>\n"
+                f"승률: <b>{wr:.1f}%</b> ({self.trade_stats['wins']}승 {self.trade_stats['total']-self.trade_stats['wins']}패)\n"
+                f"리스크(마진비율): <b>{margin_ratio:.2f}%</b>"
+            )
+            await notification_manager.send(NotificationType.PRICE_ALERT, "Daily Report", msg, channels=["telegram"])
+        except Exception as e:
+            await self._notify_error(f"Daily report send failed: {e}")
     async def _execute_shadow_trade(self, symbol: str, action: int, price: float):
         """Execute virtual trade for shadow mode"""
         port = self.shadow_portfolio

@@ -31,6 +31,13 @@ function Settings() {
     telegram: false
   });
 
+  const [telegramSettings, setTelegramSettings] = useState({
+    enabled: false,
+    bot_token: '',
+    chat_id: '',
+    bot_token_configured: false
+  });
+
   // API Config States
   const [apiConfig, setApiConfig] = useState({
     binance_api_key: '',
@@ -44,6 +51,7 @@ function Settings() {
     fetchRiskStatus();
     fetchStrategyConfig();
     fetchNotificationSettings();
+    fetchTelegramSettings();
   }, []);
 
   const fetchRiskStatus = async () => {
@@ -83,6 +91,87 @@ function Settings() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const fetchTelegramSettings = async () => {
+    try {
+      const res = await fetch('/api/settings/notifications/telegram');
+      if (res.ok) {
+        const data = await res.json();
+        setTelegramSettings(prev => ({
+          ...prev,
+          enabled: !!data.enabled,
+          chat_id: data.chat_id || '',
+          bot_token_configured: !!data.bot_token_configured
+        }));
+        // keep channels in sync
+        setNotifications(prev => ({ ...prev, telegram: !!data.enabled }));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const saveTelegramSettings = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        enabled: telegramSettings.enabled,
+        bot_token: telegramSettings.bot_token || undefined,
+        chat_id: telegramSettings.chat_id || undefined
+      };
+      const res = await fetch('/api/settings/notifications/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data?.detail || '텔레그램 설정 저장에 실패했습니다.');
+        return;
+      }
+      alert('텔레그램 설정이 저장되었습니다.');
+      setTelegramSettings(prev => ({
+        ...prev,
+        enabled: !!data.enabled,
+        chat_id: data.chat_id || prev.chat_id,
+        bot_token: '',
+        bot_token_configured: !!data.bot_token_configured
+      }));
+      setNotifications(prev => ({ ...prev, telegram: !!data.enabled }));
+    } catch (e) {
+      console.error(e);
+      alert('텔레그램 설정 저장 중 오류가 발생했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const testTelegramMessage = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        message: '✅ 텔레그램 알림 테스트 메시지입니다. (Settings)',
+        bot_token: telegramSettings.bot_token || undefined,
+        chat_id: telegramSettings.chat_id || undefined
+      };
+      const res = await fetch('/api/settings/notifications/telegram/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        alert(data?.detail || '텔레그램 테스트 메시지 전송에 실패했습니다.');
+        return;
+      }
+      alert('테스트 메시지를 전송했습니다. 텔레그램을 확인해주세요.');
+    } catch (e) {
+      console.error(e);
+      alert('텔레그램 테스트 중 오류가 발생했습니다.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -424,33 +513,123 @@ function Settings() {
               Notification Settings
             </h3>
             <p style={{ fontSize: '0.8rem', color: '#666', marginBottom: '1.5rem' }}>
-              알림 기능은 곧 출시됩니다
+              텔레그램 알림을 활성화하고 테스트 메시지를 전송할 수 있습니다.
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', opacity: 0.5 }}>
-              {Object.entries(notifications).map(([key, value]) => (
-                <div key={key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: '#000', borderRadius: '2px' }}>
-                  <span style={{ fontSize: '0.85rem', color: '#fff', textTransform: 'capitalize' }}>{key}</span>
-                  <div style={{
-                    width: '40px',
-                    height: '20px',
-                    background: value ? '#00b07c' : '#333',
-                    borderRadius: '10px',
-                    position: 'relative',
-                    cursor: 'not-allowed'
-                  }}>
-                    <div style={{
-                      width: '16px',
-                      height: '16px',
-                      background: '#fff',
-                      borderRadius: '50%',
-                      position: 'absolute',
-                      top: '2px',
-                      left: value ? '22px' : '2px',
-                      transition: 'left 0.2s'
-                    }} />
+
+            {/* Telegram */}
+            <div style={{ padding: '1rem', background: '#000', borderRadius: '2px', border: '1px solid #222' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: '900', color: '#fff' }}>Telegram 알림</div>
+                  <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
+                    Bot Token / Chat ID를 저장한 뒤 테스트 메시지를 보내세요.
+                    {telegramSettings.bot_token_configured && (
+                      <span style={{ color: '#00b07c', marginLeft: '0.5rem', fontWeight: '900' }}>
+                        (Token 저장됨)
+                      </span>
+                    )}
                   </div>
                 </div>
-              ))}
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={telegramSettings.enabled}
+                    onChange={(e) => {
+                      const enabled = e.target.checked;
+                      setTelegramSettings(prev => ({ ...prev, enabled }));
+                      setNotifications(prev => ({ ...prev, telegram: enabled }));
+                    }}
+                  />
+                  <span style={{ color: '#fff', fontSize: '0.85rem', fontWeight: '800' }}>
+                    {telegramSettings.enabled ? 'ON' : 'OFF'}
+                  </span>
+                </label>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.5rem', display: 'block' }}>
+                    Bot Token (API)
+                  </label>
+                  <input
+                    type="password"
+                    placeholder={telegramSettings.bot_token_configured ? '이미 저장됨 (변경 시 새로 입력)' : '123456:ABC-DEF...'}
+                    value={telegramSettings.bot_token}
+                    onChange={(e) => setTelegramSettings(prev => ({ ...prev, bot_token: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: '#0a0a0a',
+                      border: '1px solid #222',
+                      borderRadius: '2px',
+                      color: '#fff',
+                      fontSize: '0.85rem'
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.5rem', display: 'block' }}>
+                    Chat ID (챗봇 아이디)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="예: 123456789"
+                    value={telegramSettings.chat_id}
+                    onChange={(e) => setTelegramSettings(prev => ({ ...prev, chat_id: e.target.value }))}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      background: '#0a0a0a',
+                      border: '1px solid #222',
+                      borderRadius: '2px',
+                      color: '#fff',
+                      fontSize: '0.85rem'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                <button
+                  onClick={saveTelegramSettings}
+                  disabled={saving}
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem',
+                    background: '#00b07c',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: '2px',
+                    fontWeight: '900',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  {saving ? 'Saving...' : '저장'}
+                </button>
+
+                <button
+                  onClick={testTelegramMessage}
+                  disabled={saving}
+                  style={{
+                    flex: 1,
+                    padding: '0.75rem',
+                    background: 'transparent',
+                    color: '#fff',
+                    border: '1px solid #222',
+                    borderRadius: '2px',
+                    fontWeight: '900',
+                    fontSize: '0.85rem',
+                    cursor: 'pointer',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  테스트 메시지
+                </button>
+              </div>
             </div>
           </div>
         )}

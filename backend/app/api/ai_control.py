@@ -43,6 +43,7 @@ class TrainingRequest(BaseModel):
 
 class BacktestRequest(BaseModel):
     model_path: str
+    interval: str = "1h"  # Added interval support
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     initial_balance: float = 10000.0
@@ -366,6 +367,7 @@ async def run_backtest(request: BacktestRequest):
 
         results = await backtest_agent(
             model_path=model_path,
+            interval=request.interval,  # Pass interval to agent
             start_date=request.start_date,
             end_date=request.end_date,
             initial_balance=request.initial_balance,
@@ -779,28 +781,47 @@ async def get_weekly_summary():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class LoadModelSimpleRequest(BaseModel):
+    model_name: str
+
+
 @router.post("/load-model")
-async def load_model_endpoint(model_name: str):
+async def load_model_endpoint(request: LoadModelSimpleRequest):
     """Load a specific model"""
     global trading_agent
     
     try:
         if trading_agent is None:
-            trading_agent = TradingAgent(
-                state_size=20,
-                action_size=4,
-                symbol="BTCUSDT"
-            )
+            trading_agent = TradingAgent()
         
-        model_path = f"data/models/{model_name}"
+        model_path = request.model_name
+        
+        # Check if just filename was passed
         if not os.path.exists(model_path):
-            raise HTTPException(status_code=404, detail=f"Model not found: {model_name}")
+            path_in_model_dir = os.path.join(settings.AI_MODEL_PATH, model_path)
+            if os.path.exists(path_in_model_dir):
+                model_path = path_in_model_dir
+            # Also handle "data/models/..." prefix passed from frontend
+            elif model_path.startswith("data/models/"):
+                basename = os.path.basename(model_path)
+                path_in_model_dir = os.path.join(settings.AI_MODEL_PATH, basename)
+                if os.path.exists(path_in_model_dir):
+                    model_path = path_in_model_dir
+        
+        if not os.path.exists(model_path):
+            raise HTTPException(status_code=404, detail=f"Model file not found: {request.model_name}")
         
         trading_agent.load_model(model_path)
         
+        # SYNC with AutoTradingService
+        import app.main as main
+        if main.auto_trading_service:
+            main.auto_trading_service.agent = trading_agent
+            logger.info("Synced loaded model with AutoTradingService")
+        
         return {
             "status": "success",
-            "message": f"Model {model_name} loaded successfully"
+            "message": f"Model {os.path.basename(model_path)} loaded successfully"
         }
     except Exception as e:
         logger.error(f"Failed to load model: {e}")

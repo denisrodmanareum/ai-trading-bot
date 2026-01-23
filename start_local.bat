@@ -22,7 +22,15 @@ if not exist "frontend" (
 
 :: 1. Backend Start
 echo [1/2] Starting Backend Server...
-start "AI Bot Backend" cmd /k "cd /d %~dp0backend && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+set "BACKEND_PY=%~dp0backend\venv\Scripts\python.exe"
+if exist "%BACKEND_PY%" (
+    echo Using venv Python: %BACKEND_PY%
+) else (
+    echo WARNING: backend\venv not found. Falling back to system python.
+    echo Run setup.bat or INSTALL.bat first.
+    set "BACKEND_PY=python"
+)
+start "AI Bot Backend" cmd /k "cd /d %~dp0backend && \"%BACKEND_PY%\" -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
 
 if errorlevel 1 (
     echo ERROR: Failed to start backend!

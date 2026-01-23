@@ -20,6 +20,8 @@ function Dashboard() {
   const macroChartRef = useRef(null);
   const etfChartRef = useRef(null);
   const rowChartRefs = useRef(new Map());
+  const cancelledRef = useRef(false);
+  const retryTimersRef = useRef([]);
 
   useEffect(() => {
     const fetchAll = async () => {
@@ -63,11 +65,12 @@ function Dashboard() {
     if (loading) return;
 
     const initCharts = () => {
+      if (cancelledRef.current) return;
       // Macro data chart
       if (macroChartRef.current && !macroChartRef.current.chart) {
         const container = macroChartRef.current;
         if (container.clientWidth === 0) {
-          setTimeout(initCharts, 100);
+          retryTimersRef.current.push(setTimeout(initCharts, 100));
           return;
         }
         
@@ -105,7 +108,7 @@ function Dashboard() {
       if (etfChartRef.current && !etfChartRef.current.chart) {
         const container = etfChartRef.current;
         if (container.clientWidth === 0) {
-          setTimeout(initCharts, 100);
+          retryTimersRef.current.push(setTimeout(initCharts, 100));
           return;
         }
         
@@ -141,10 +144,14 @@ function Dashboard() {
     };
 
     // Small delay to ensure DOM is ready
+    cancelledRef.current = false;
     const timer = setTimeout(initCharts, 100);
+    retryTimersRef.current.push(timer);
 
     return () => {
-      clearTimeout(timer);
+      cancelledRef.current = true;
+      retryTimersRef.current.forEach((t) => clearTimeout(t));
+      retryTimersRef.current = [];
       if (macroChartRef.current?.chart) {
         macroChartRef.current.chart.remove();
         macroChartRef.current.chart = null;
@@ -161,10 +168,11 @@ function Dashboard() {
     if (loading) return;
 
     const initRowCharts = () => {
+      if (cancelledRef.current) return;
       rowChartRefs.current.forEach((container, key) => {
         if (!container || container.chart) return;
         if (container.clientWidth === 0) {
-          setTimeout(initRowCharts, 100);
+          retryTimersRef.current.push(setTimeout(initRowCharts, 100));
           return;
         }
 
@@ -199,9 +207,13 @@ function Dashboard() {
       });
     };
 
+    cancelledRef.current = false;
     const timer = setTimeout(initRowCharts, 200);
+    retryTimersRef.current.push(timer);
     return () => {
-      clearTimeout(timer);
+      cancelledRef.current = true;
+      retryTimersRef.current.forEach((t) => clearTimeout(t));
+      retryTimersRef.current = [];
       rowChartRefs.current.forEach((container) => {
         if (container?.chart) {
           container.chart.remove();

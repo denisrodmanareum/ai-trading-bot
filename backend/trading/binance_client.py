@@ -128,6 +128,85 @@ class BinanceClient:
         logger.info(f"Order placed: {side} {quantity} {symbol} (reduce_only={reduce_only})")
         return order
 
+    async def place_bracket_orders(
+        self,
+        symbol: str,
+        position_side: str,
+        quantity: float,
+        stop_loss_price: float | None,
+        take_profit_price: float | None,
+    ) -> dict:
+        """
+        Place reduce-only SL/TP orders for an open position.
+        position_side: "LONG" or "SHORT"
+        Returns: {"sl": order|None, "tp": order|None}
+        """
+        results: dict = {"sl": None, "tp": None}
+        if not stop_loss_price and not take_profit_price:
+            return results
+
+        # Close side is opposite of entry
+        close_side = "SELL" if position_side.upper() == "LONG" else "BUY"
+
+        # Binance Futures uses STOP_MARKET / TAKE_PROFIT_MARKET with stopPrice.
+        # closePosition is safer (no qty needed), but some accounts/symbols may reject it.
+        # We'll try closePosition=True first, then fallback to reduceOnly+quantity.
+
+        async def _create(order_type: str, stop_price: float):
+            try:
+                return await self.client.futures_create_order(
+                    symbol=symbol,
+                    side=close_side,
+                    type=order_type,
+                    stopPrice=stop_price,
+                    closePosition=True,
+                    reduceOnly=True,
+                    workingType="MARK_PRICE",
+                )
+            except Exception as e:
+                logger.warning(f"Bracket {order_type} closePosition failed, fallback qty: {e}")
+                return await self.client.futures_create_order(
+                    symbol=symbol,
+                    side=close_side,
+                    type=order_type,
+                    stopPrice=stop_price,
+                    quantity=quantity,
+                    reduceOnly=True,
+                    workingType="MARK_PRICE",
+                )
+
+        try:
+            if stop_loss_price:
+                results["sl"] = await _create("STOP_MARKET", float(stop_loss_price))
+                logger.info(f"Placed SL ({symbol}) @ {stop_loss_price}")
+        except Exception as e:
+            logger.error(f"Failed to place SL for {symbol}: {e}")
+
+        try:
+            if take_profit_price:
+                results["tp"] = await _create("TAKE_PROFIT_MARKET", float(take_profit_price))
+                logger.info(f"Placed TP ({symbol}) @ {take_profit_price}")
+        except Exception as e:
+            logger.error(f"Failed to place TP for {symbol}: {e}")
+
+        return results
+
+    async def cancel_open_orders(self, symbol: str) -> int:
+        """Cancel all open orders for symbol. Returns cancelled count."""
+        try:
+            orders = await self.get_open_orders(symbol=symbol)
+            cancelled = 0
+            for o in orders:
+                try:
+                    await self.cancel_order(symbol=symbol, order_id=o.get("orderId"))
+                    cancelled += 1
+                except Exception as e:
+                    logger.warning(f"Cancel order failed ({symbol}): {e}")
+            return cancelled
+        except Exception as e:
+            logger.error(f"Cancel open orders failed ({symbol}): {e}")
+            return 0
+
     async def get_funding_rate(self, symbol="BTCUSDT"):
         """Get funding rate"""
         try:

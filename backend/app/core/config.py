@@ -9,9 +9,13 @@ from typing import List, Union
 class Settings(BaseSettings):
     """Application settings"""
     
-    # ⚠️ 여기에 바이낸스 API 키를 직접 입력하세요!
-    BINANCE_API_KEY: str = "eOMptqOdKQbWm7IdL9ueqIRxm2DXFomdTZ4kiSKT9CT6TQnPev3sZZFpy8OixiXU"
-    BINANCE_API_SECRET: str = "f73VOu6R4tEsLZD8KFgQRx6IcqQUM2vXFDp7hex2Yh0YtbUIKkGjdZKGNMQWPFZO"
+    # Binance API
+    # ⚠️ 보안상 API 키를 코드에 하드코딩하지 마세요.
+    # backend/.env 에 아래 키로 넣어주세요:
+    # BINANCE_API_KEY=...
+    # BINANCE_API_SECRET=...
+    BINANCE_API_KEY: str = ""
+    BINANCE_API_SECRET: str = ""
     BINANCE_TESTNET: bool = True
     
     # Trading

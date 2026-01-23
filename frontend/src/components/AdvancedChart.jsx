@@ -101,9 +101,15 @@ function AdvancedChart({ symbol = 'BTCUSDT', interval = '15m', hideRSI = false }
         bb: true,
         rsi: !hideRSI
     });
+    const [layoutTick, setLayoutTick] = useState(0);
 
     useEffect(() => {
-        if (!chartContainerRef.current) return;
+        let disposed = false;
+        let abortController = null;
+        let retryTimer = null;
+
+        const container = chartContainerRef.current;
+        if (!container) return;
 
         // Validate interval before proceeding
         if (typeof safeInterval !== 'string' || !safeInterval) {
@@ -111,8 +117,22 @@ function AdvancedChart({ symbol = 'BTCUSDT', interval = '15m', hideRSI = false }
             return;
         }
 
+        // Wait until container has non-zero width (common during initial layout / tab switches)
+        if ((container.clientWidth || 0) === 0) {
+            retryTimer = setTimeout(() => {
+                if (!disposed) setLayoutTick((t) => t + 1);
+            }, 100);
+            return () => {
+                disposed = true;
+                if (retryTimer) clearTimeout(retryTimer);
+            };
+        }
+
         // Main Chart
-        const chart = createChart(chartContainerRef.current, {
+        const initialWidth = container.clientWidth || 600;
+        const initialHeight = container.clientHeight || 300;
+
+        const chart = createChart(container, {
             layout: {
                 background: { type: 'solid', color: '#000000' },
                 textColor: '#666',
@@ -123,8 +143,8 @@ function AdvancedChart({ symbol = 'BTCUSDT', interval = '15m', hideRSI = false }
                 vertLines: { visible: false },
                 horzLines: { color: 'rgba(255,255,255,0.03)' }
             },
-            width: chartContainerRef.current.clientWidth,
-            height: chartContainerRef.current.clientHeight,
+            width: initialWidth,
+            height: initialHeight,
             timeScale: {
                 borderColor: '#111',
                 timeVisible: true,
@@ -187,8 +207,8 @@ function AdvancedChart({ symbol = 'BTCUSDT', interval = '15m', hideRSI = false }
                     vertLines: { visible: false },
                     horzLines: { color: 'rgba(255,255,255,0.03)' }
                 },
-                width: rsiContainerRef.current.clientWidth,
-                height: rsiContainerRef.current.clientHeight,
+                width: rsiContainerRef.current.clientWidth || 600,
+                height: rsiContainerRef.current.clientHeight || 80,
                 timeScale: { borderColor: '#111', visible: false },
                 rightPriceScale: { borderColor: '#111', scaleMargins: { top: 0.1, bottom: 0.1 } },
                 crosshair: { mode: 0 }
@@ -215,12 +235,18 @@ function AdvancedChart({ symbol = 'BTCUSDT', interval = '15m', hideRSI = false }
         // Fetch and update data
         const fetchData = async () => {
             try {
+                if (disposed) return;
                 // Ensure interval is a valid string
                 const validInterval = (typeof interval === 'string' && interval) ? interval : '15m';
-                const res = await fetch(`/api/dashboard/chart-data/${symbol}?interval=${validInterval}&limit=200`);
+                abortController?.abort();
+                abortController = new AbortController();
+                const res = await fetch(`/api/dashboard/chart-data/${symbol}?interval=${validInterval}&limit=200`, {
+                    signal: abortController.signal
+                });
                 if (!res.ok) return;
 
                 const json = await res.json();
+                if (disposed) return;
                 const data = json.data.map(d => ({
                     time: d.timestamp / 1000 + 32400,
                     open: d.open,
@@ -261,13 +287,16 @@ function AdvancedChart({ symbol = 'BTCUSDT', interval = '15m', hideRSI = false }
 
                 // Sync time scales
                 if (rsiChart) {
+                    // subscribe once (guarded by effect lifetime)
                     chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
-                        if (range) rsiChart.timeScale().setVisibleRange(range);
+                        if (!disposed && range) rsiChart.timeScale().setVisibleRange(range);
                     });
                 }
 
             } catch (e) {
-                console.error('Chart data error:', e);
+                if (e?.name !== 'AbortError') {
+                    console.error('Chart data error:', e);
+                }
             }
         };
 
@@ -276,28 +305,31 @@ function AdvancedChart({ symbol = 'BTCUSDT', interval = '15m', hideRSI = false }
 
         // Resize handler
         const handleResize = () => {
+            if (disposed) return;
             if (chartContainerRef.current) {
                 chart.applyOptions({
-                    width: chartContainerRef.current.clientWidth,
-                    height: chartContainerRef.current.clientHeight
+                    width: chartContainerRef.current.clientWidth || initialWidth,
+                    height: chartContainerRef.current.clientHeight || initialHeight
                 });
             }
             if (rsiContainerRef.current && rsiChart) {
                 rsiChart.applyOptions({
-                    width: rsiContainerRef.current.clientWidth,
-                    height: rsiContainerRef.current.clientHeight
+                    width: rsiContainerRef.current.clientWidth || initialWidth,
+                    height: rsiContainerRef.current.clientHeight || 80
                 });
             }
         };
         window.addEventListener('resize', handleResize);
 
         return () => {
+            disposed = true;
             clearInterval(dataInterval);
             window.removeEventListener('resize', handleResize);
-            chart.remove();
-            if (rsiChart) rsiChart.remove();
+            abortController?.abort();
+            try { chart.remove(); } catch (_) {}
+            try { if (rsiChart) rsiChart.remove(); } catch (_) {}
         };
-    }, [symbol, safeInterval, showIndicators]);
+    }, [symbol, safeInterval, showIndicators, layoutTick]);
 
     return (
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#000' }}>

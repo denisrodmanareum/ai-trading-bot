@@ -1,7 +1,7 @@
 import os
 import glob
 
-def cleanup_models(directory="data/models", keep=10):
+def cleanup_models(directory="data/models", keep=20):  # 20개로 증가
     # Get all .zip files
     files = glob.glob(os.path.join(directory, "*.zip"))
     

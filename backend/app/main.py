@@ -121,13 +121,14 @@ async def health_check():
 
 
 # Import and register routers AFTER app creation
-from app.api import dashboard, trading, positions, ai_control, history, ai_analysis, quick_wins, advanced_data, dashboard_v2, coin_selection
+from app.api import dashboard, trading, positions, ai_control, history, ai_analysis, quick_wins, advanced_data, dashboard_v2, coin_selection, settings
 
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(dashboard_v2.router, prefix="/api/dashboard", tags=["Dashboard V2"])
 app.include_router(trading.router, prefix="/api/trading", tags=["Trading"])
 app.include_router(positions.router, prefix="/api/positions", tags=["Positions"])
 app.include_router(ai_control.router, prefix="/api/ai", tags=["AI Control"])
+app.include_router(settings.router, prefix="/api/settings", tags=["Settings"])
 app.include_router(coin_selection.router, prefix="/api/coins", tags=["Coin Selection"])
 app.include_router(history.router, prefix="/api/history", tags=["History"])
 app.include_router(ai_analysis.router, tags=["AI Analysis"])

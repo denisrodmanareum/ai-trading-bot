@@ -115,6 +115,22 @@ class TradingAgent:
         """Load pre-trained model"""
         try:
             logger.info(f"Loading model from {path}")
+            # Detect Git LFS pointer file (happens when git-lfs isn't installed or git lfs pull wasn't run)
+            try:
+                import os
+                if os.path.exists(path) and os.path.getsize(path) < 2048:
+                    with open(path, "rb") as f:
+                        head = f.read(2048)
+                    if b"git-lfs.github.com/spec/v1" in head:
+                        raise RuntimeError(
+                            "모델 파일이 Git LFS 포인터로 내려왔습니다. "
+                            "다른 PC에서 아래를 실행하세요: "
+                            "`git lfs install` 후 `git lfs pull`"
+                        )
+            except Exception as e:
+                # If we raised our own error, re-raise; otherwise ignore detection issues
+                if isinstance(e, RuntimeError):
+                    raise
             self.model = PPO.load(path)
             self.model_path = path
             logger.info("Model loaded successfully")
@@ -268,15 +284,93 @@ class TradingAgent:
         done = False
         truncated = False
         total_reward = 0
+        signal_overrides = 0
         
         while not done and not truncated:
-            action = self.predict(obs, deterministic=True)
+            # stable-baselines3 may return numpy scalar/array; normalize to int
+            action = int(self.predict(obs, deterministic=True))
+            
+            # Fallback: if the model never enters (common degenerate policy), use stochastic signal
+            # as a guardrail so backtests produce meaningful trades.
+            try:
+                pos = int(getattr(env, "position", 0))
+                stoch = env.get_stochastic_signal() if hasattr(env, "get_stochastic_signal") else {"signal": "NEUTRAL", "strength": 0}
+                sig = stoch.get("signal", "NEUTRAL")
+                strength = int(stoch.get("strength", 0) or 0)
+                
+                buy_sigs = {"BUY", "STRONG_BUY"}
+                sell_sigs = {"SELL", "STRONG_SELL"}
+                
+                # If flat and model is HOLD/CLOSE, enter on at-least BUY/SELL strength>=2
+                if pos == 0 and action in (0, 3) and strength >= 2:
+                    if sig in buy_sigs:
+                        action = 1
+                        signal_overrides += 1
+                    elif sig in sell_sigs:
+                        action = 2
+                        signal_overrides += 1
+                
+                # If in position and model keeps holding, allow a strong opposite signal to close
+                if pos == 1 and action == 0 and sig == "STRONG_SELL" and strength >= 3:
+                    action = 3
+                    signal_overrides += 1
+                elif pos == -1 and action == 0 and sig == "STRONG_BUY" and strength >= 3:
+                    action = 3
+                    signal_overrides += 1
+            except Exception:
+                pass
+
             obs, reward, done, truncated, info = env.step(action)
             total_reward += reward
+        
+        # IMPORTANT: Trades are counted on CLOSE in TradingEnvironment.
+        # If the agent opens a position and never closes it before the episode ends,
+        # total_trades will remain 0. To make backtest results meaningful, force-close
+        # any open position at the end using the last available price.
+        try:
+            if getattr(env, "position", 0) != 0:
+                # env.current_step is already advanced; clamp index to last candle
+                last_idx = min(getattr(env, "current_step", len(env.df) - 1), len(env.df) - 1)
+                last_price = float(env.df.iloc[last_idx]["close"])
+                env._close_position(last_price)  # increments total_trades and updates balance
+        except Exception as e:
+            logger.warning(f"Backtest force-close failed: {e}")
         
         # Get performance metrics
         metrics = env.get_performance_metrics()
         metrics['total_reward'] = total_reward
+        metrics["signal_overrides"] = int(signal_overrides)
+        
+        # Add action distribution for debugging (0=HOLD, 1=LONG, 2=SHORT, 3=CLOSE)
+        try:
+            from collections import Counter
+            action_counts = Counter(getattr(env, "action_history", []))
+            metrics["action_counts"] = {
+                "HOLD": int(action_counts.get(0, 0)),
+                "LONG": int(action_counts.get(1, 0)),
+                "SHORT": int(action_counts.get(2, 0)),
+                "CLOSE": int(action_counts.get(3, 0)),
+            }
+            metrics["ended_with_open_position"] = bool(getattr(env, "position", 0) != 0)
+        except Exception:
+            pass
+
+        # Ensure JSON-serializable types (convert numpy scalars, etc.)
+        try:
+            import numpy as _np
+
+            def _to_builtin(v):
+                if isinstance(v, dict):
+                    return {k: _to_builtin(x) for k, x in v.items()}
+                if isinstance(v, (list, tuple)):
+                    return [_to_builtin(x) for x in v]
+                if isinstance(v, _np.generic):
+                    return v.item()
+                return v
+
+            metrics = _to_builtin(metrics)
+        except Exception:
+            pass
         
         logger.info(f"Backtest completed: {metrics}")
         return metrics

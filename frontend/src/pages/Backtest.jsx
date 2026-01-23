@@ -29,6 +29,7 @@ function Backtest() {
   const [config, setConfig] = useState({
     model: '',
     symbol: 'BTCUSDT',
+    interval: '1h',
     days: 7,
     initialBalance: 10000
   });
@@ -70,6 +71,7 @@ function Backtest() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model_path: "data/models/" + config.model,
+          interval: config.interval,
           start_date: null,
           days: config.days,
           symbol: config.symbol,
@@ -148,8 +150,15 @@ function Backtest() {
             </select>
           </div>
           <div className="form-group">
-            <label>Simulation Window (Days)</label>
-            <input type="number" value={config.days} onChange={e => setConfig({ ...config, days: parseInt(e.target.value) })} />
+            <label>Tactical Interval</label>
+            <select value={config.interval} onChange={e => setConfig({ ...config, interval: e.target.value })}>
+              <option value="1m">1 minute (Scalp)</option>
+              <option value="5m">5 minutes</option>
+              <option value="15m">15 minutes</option>
+              <option value="1h">1 hour (Swing)</option>
+              <option value="4h">4 hours</option>
+              <option value="1d">1 day</option>
+            </select>
           </div>
           <div className="form-group">
             <label>Inception Balance (USDT)</label>
