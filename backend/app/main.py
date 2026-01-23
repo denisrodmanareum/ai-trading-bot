@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from loguru import logger
+from pathlib import Path
 
 # Binance Client 초기화
 from trading.binance_client import BinanceClient
@@ -51,6 +52,59 @@ async def lifespan(app: FastAPI):
             logger.info("Scheduling Auto Trading start in 10 seconds...")
             await asyncio.sleep(10)
             await auto_trading_service.start()
+            
+            # --- STARTUP NOTIFICATION ---
+            try:
+                # 1. Get Model Name
+                model_name = "Unknown"
+                if auto_trading_service.agent and auto_trading_service.agent.model_path:
+                   model_name = Path(auto_trading_service.agent.model_path).name
+                elif settings.AI_MODEL_PATH: # Fallback to latest in dir
+                   try:
+                       import os
+                       models = [f for f in os.listdir(settings.AI_MODEL_PATH) if f.endswith('.zip')]
+                       if models:
+                           model_name = sorted(models)[-1]
+                       else:
+                           model_name = "Initial Model (New)"
+                   except:
+                       pass
+
+                # 2. Get Account Info
+                account = await binance_client.get_account_info()
+                balance = account.get('balance', 0.0)
+                unrealized_pnl = account.get('unrealized_pnl', 0.0)
+                pnl_percent = 0.0
+                if balance > 0:
+                    pnl_percent = (unrealized_pnl / balance) * 100
+
+                # 3. Get Positions
+                positions = await binance_client.get_all_positions()
+                
+                # 4. Get Public IP (Best effort)
+                import socket
+                import urllib.request
+                try:
+                    external_ip = urllib.request.urlopen('https://api.ipify.org').read().decode('utf8')
+                except:
+                    external_ip = "Unknown (Network Error)"
+                
+                host_info = f"{socket.gethostname()} ({external_ip})"
+
+                # 5. Send Notification
+                from app.services.notifications import notify_startup
+                await notify_startup(
+                    model_name=model_name,
+                    ip_address=host_info,
+                    balance=balance,
+                    unrealized_pnl=unrealized_pnl,
+                    pnl_percent=pnl_percent,
+                    active_positions=positions
+                )
+                logger.info("✅ Startup notification sent")
+            except Exception as e:
+                logger.error(f"Failed to send startup notification: {e}")
+            # ----------------------------
             
         asyncio.create_task(start_trading_delayed())
         

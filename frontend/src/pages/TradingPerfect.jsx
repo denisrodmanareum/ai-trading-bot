@@ -34,6 +34,7 @@ function TradingPerfect() {
   const [price, setPrice] = useState('');
   const [quantity, setQuantity] = useState('');
   const [totalUSD, setTotalUSD] = useState(0);
+  const [amountUnit, setAmountUnit] = useState('COIN'); // 'COIN' (BTC) or 'USDT'
 
   // Bottom tabs
   const [activeBottomTab, setActiveBottomTab] = useState('positions');
@@ -121,9 +122,15 @@ function TradingPerfect() {
 
   // Total calculation
   useEffect(() => {
-    if (quantity && price) setTotalUSD(parseFloat(quantity) * parseFloat(price));
-    else if (quantity && currentPrice) setTotalUSD(parseFloat(quantity) * currentPrice);
-  }, [quantity, price, currentPrice]);
+    const qValue = parseFloat(quantity) || 0;
+    const pValue = parseFloat(price) || currentPrice || 0;
+
+    if (amountUnit === 'USDT') {
+      setTotalUSD(qValue); // If user enters 100 USDT, cost is 100
+    } else {
+      setTotalUSD(qValue * pValue); // If user enters 0.01 BTC, cost is 0.01 * price
+    }
+  }, [quantity, price, currentPrice, amountUnit]);
 
   const handlePercentage = (pct) => {
     const availableBalance = balance.available || 1000;
@@ -136,6 +143,16 @@ function TradingPerfect() {
 
   const handleSubmitOrder = async (side) => {
     if (!quantity) return alert('Enter quantity');
+
+    // Convert to quantity (COIN) if in USDT mode
+    let finalQty = parseFloat(quantity);
+    const finalPrice = orderType === 'Limit' ? parseFloat(price) : currentPrice;
+
+    if (amountUnit === 'USDT') {
+      if (!finalPrice) return alert('Price required for USDT conversion');
+      finalQty = parseFloat((finalQty / finalPrice).toFixed(4));
+    }
+
     try {
       const res = await fetch('/api/trading/order', {
         method: 'POST',
@@ -144,7 +161,7 @@ function TradingPerfect() {
           symbol,
           side,
           order_type: orderType.toUpperCase(),
-          quantity: parseFloat(quantity),
+          quantity: finalQty,
           price: orderType === 'Limit' ? parseFloat(price) : null,
           leverage
         })
@@ -196,15 +213,42 @@ function TradingPerfect() {
     } catch (e) { alert('❌ Close All Failed'); }
   };
 
+  const handleCancelOrder = async (orderId, orderSymbol = symbol) => {
+    try {
+      // Backend expects: /api/trading/order/{symbol}/{order_id}
+      const res = await fetch(`/api/trading/order/${orderSymbol}/${orderId}`, { method: 'DELETE' });
+      if (res.ok) {
+        alert('✅ Order Cancelled');
+        const ordRes = await fetch(`/api/trading/orders?symbol=${symbol}`);
+        if (ordRes.ok) setOrders(await ordRes.json());
+      } else {
+        const err = await res.json();
+        alert(`❌ Failed: ${err.detail || 'Error'}`);
+      }
+    } catch (e) { alert('❌ Cancel Failed'); }
+  };
+
   const filteredSymbols = availableSymbols.filter(s => s.toLowerCase().includes(symbolSearch.toLowerCase()));
 
   // Inline CSS for professional feel
   const scrollbarStyles = `
     .no-scrollbar::-webkit-scrollbar { display: none; }
     .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-    .custom-scroll::-webkit-scrollbar { width: 4px; }
-    .custom-scroll::-webkit-scrollbar-track { background: transparent; }
-    .custom-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+    /* Improved Custom Scrollbar */
+    .custom-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+    .custom-scroll::-webkit-scrollbar-track { background: #050505; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb:hover { background: #555; }
+    
+    /* Disable native number input arrows */
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { 
+      -webkit-appearance: none; 
+      margin: 0; 
+    }
+    input[type=number] {
+      -moz-appearance: textfield;
+    }
   `;
 
   return (
@@ -396,11 +440,23 @@ function TradingPerfect() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem' }}>
                 <thead style={{ position: 'sticky', top: 0, background: '#080808', color: '#444', textAlign: 'left', zIndex: 1 }}>
                   <tr>
-                    <th style={{ padding: '10px 14px' }}>Market</th>
-                    <th style={{ padding: '10px' }}>Size</th>
-                    <th style={{ padding: '10px' }}>Entry</th>
-                    <th style={{ padding: '10px' }}>Mark</th>
-                    <th style={{ padding: '10px' }}>PnL (ROE%)</th>
+                    {activeBottomTab === 'positions' ? (
+                      <>
+                        <th style={{ padding: '10px 14px' }}>Market</th>
+                        <th style={{ padding: '10px' }}>Size</th>
+                        <th style={{ padding: '10px' }}>Entry</th>
+                        <th style={{ padding: '10px' }}>Mark</th>
+                        <th style={{ padding: '10px' }}>PnL (ROE%)</th>
+                      </>
+                    ) : (
+                      <>
+                        <th style={{ padding: '10px 14px' }}>Market</th>
+                        <th style={{ padding: '10px' }}>Type</th>
+                        <th style={{ padding: '10px' }}>Side</th>
+                        <th style={{ padding: '10px' }}>Price</th>
+                        <th style={{ padding: '10px' }}>Amount</th>
+                      </>
+                    )}
                     <th style={{ padding: '10px 14px', textAlign: 'right' }}>Action</th>
                   </tr>
                 </thead>
@@ -438,6 +494,48 @@ function TradingPerfect() {
                   ))}
                   {activeBottomTab === 'positions' && positions.length === 0 && (
                     <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#333' }}>No active positions</td></tr>
+                  )}
+
+                  {activeBottomTab === 'orders' && orders.map((o, i) => {
+                    const oid = o.orderId || o.order_id;
+                    const qty = o.origQty || o.orig_qty || o.quantity;
+                    const p = o.price || o.limitPrice;
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid #111' }}>
+                        <td style={{ padding: '10px 14px' }}>
+                          <span style={{ fontWeight: '800' }}>{o.symbol}</span>
+                        </td>
+                        <td style={{ padding: '10px', color: '#aaa' }}>{o.type}</td>
+                        <td style={{ padding: '10px' }}>
+                          <span style={{ color: o.side === 'BUY' ? '#00b07c' : '#ff4b4b', fontWeight: '800' }}>{o.side}</span>
+                        </td>
+                        <td style={{ padding: '10px', fontFamily: 'monospace', color: '#f0b90b' }}>{Number(p).toLocaleString()}</td>
+                        <td style={{ padding: '10px', fontFamily: 'monospace' }}>{qty}</td>
+                        <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                          <button
+                            onClick={() => handleCancelOrder(oid, o.symbol)}
+                            style={{
+                              background: '#1a1a1a',
+                              border: '1px solid #333',
+                              color: '#aaa',
+                              padding: '4px 10px',
+                              borderRadius: '4px',
+                              fontSize: '0.65rem',
+                              fontWeight: '700',
+                              cursor: 'pointer',
+                              transition: 'all 0.2s'
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.background = '#222'; e.currentTarget.style.color = '#fff'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = '#1a1a1a'; e.currentTarget.style.color = '#aaa'; }}
+                          >
+                            Cancel
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {activeBottomTab === 'orders' && orders.length === 0 && (
+                    <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#333' }}>No open orders</td></tr>
                   )}
                 </tbody>
               </table>
@@ -543,9 +641,13 @@ function TradingPerfect() {
                 </div>
               )}
               <div style={{ position: 'relative' }}>
-                <input type="number" placeholder="Amount" value={quantity} onChange={e => setQuantity(e.target.value)}
+                <input type="number" placeholder={amountUnit === 'COIN' ? "Amount (BTC)" : "Amount (USDT)"} value={quantity} onChange={e => setQuantity(e.target.value)}
                   style={{ width: '100%', padding: '12px', background: '#050505', border: '1px solid #1a1a1a', borderRadius: '6px', color: '#fff', outline: 'none', fontSize: '0.85rem' }} />
-                <span style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.6rem', color: '#333' }}>BTC</span>
+                <span
+                  onClick={() => setAmountUnit(amountUnit === 'COIN' ? 'USDT' : 'COIN')}
+                  style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', fontSize: '0.6rem', color: '#f0b90b', cursor: 'pointer', fontWeight: 'bold' }}>
+                  {amountUnit === 'COIN' ? symbol.replace('USDT', '') : 'USDT'} ⇄
+                </span>
               </div>
             </div>
 
@@ -558,7 +660,7 @@ function TradingPerfect() {
 
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 0', borderTop: '1px solid #1a1a1a', marginBottom: '16px' }}>
               <span style={{ fontSize: '0.7rem', color: '#444' }}>Approx. Cost:</span>
-              <span style={{ fontSize: '0.8rem', fontWeight: '900', color: '#fff' }}>${totalUSD.toLocaleString()}</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: '900', color: '#fff' }}>${totalUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
 
             <div style={{ display: 'flex', gap: '8px' }}>

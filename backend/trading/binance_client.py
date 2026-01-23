@@ -32,6 +32,7 @@ class BinanceClient:
     
     async def get_account_info(self):
         """Get account info"""
+        await self.ensure_connection()
         account = await self.client.futures_account()
         return {
             "balance": float(account['totalWalletBalance']),
@@ -46,11 +47,20 @@ class BinanceClient:
     
     async def get_current_price(self, symbol="BTCUSDT"):
         """Get current price"""
+        await self.ensure_connection()
         ticker = await self.client.futures_symbol_ticker(symbol=symbol)
         return float(ticker['price'])
         
+    async def ensure_connection(self):
+        """Ensure client session is active"""
+        if self.client is None or (hasattr(self.client, 'session') and self.client.session.closed):
+            logger.warning("⚠️ Binance client session is closed or missing. Reconnecting...")
+            await self.initialize()
+
     async def get_klines(self, symbol="BTCUSDT", interval="1h", limit=100):
         """Get klines/candles"""
+        await self.ensure_connection()
+        
         import pandas as pd
         klines = await self.client.futures_klines(
             symbol=symbol,
@@ -66,6 +76,15 @@ class BinanceClient:
         for col in ['open', 'high', 'low', 'close', 'volume']:
             df[col] = df[col].astype(float)
         return df
+
+    async def get_raw_klines(self, symbol="BTCUSDT", interval="1m", limit=50):
+        """Get raw klines (list of lists) with connection check"""
+        await self.ensure_connection()
+        return await self.client.futures_klines(
+            symbol=symbol,
+            interval=interval,
+            limit=limit
+        )
 
     async def get_position(self, symbol="BTCUSDT"):
         """Get safe position info for single symbol"""

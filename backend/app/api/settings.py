@@ -5,6 +5,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from loguru import logger
+import os
+import asyncio
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -213,4 +216,94 @@ async def test_telegram_notification(req: TelegramTestRequest):
         raise
     except Exception as e:
         logger.error(f"Telegram test failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- API Configuration Models ---
+
+class ApiConfig(BaseModel):
+    api_key: str
+    api_secret: str
+    testnet: bool
+
+class ApiConfigUpdate(BaseModel):
+    api_key: str
+    api_secret: str
+    testnet: bool
+
+# --- API Configuration Endpoints ---
+
+@router.get("/api-config", response_model=ApiConfig)
+async def get_api_config():
+    """Run-time API configuration (masked)"""
+    return {
+        "api_key": f"{settings.BINANCE_API_KEY[:4]}...{settings.BINANCE_API_KEY[-4:]}" if settings.BINANCE_API_KEY and len(settings.BINANCE_API_KEY) > 8 else "****",
+        "api_secret": "****", # Always mask secret
+        "testnet": settings.BINANCE_TESTNET
+    }
+
+@router.post("/api-config")
+async def update_api_config(config: ApiConfigUpdate):
+    """
+    Update API keys and Testnet setting.
+    1. Updates memory settings.
+    2. Updates .env file.
+    3. Re-initializes Binance Client.
+    """
+    try:
+        # 1. Update memory
+        settings.BINANCE_API_KEY = config.api_key
+        settings.BINANCE_API_SECRET = config.api_secret
+        settings.BINANCE_TESTNET = config.testnet
+        
+        # 2. Update .env file
+        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
+        
+        # Read existing lines
+        lines = []
+        if os.path.exists(env_path):
+            with open(env_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        
+        new_lines = []
+        keys_updated = {"BINANCE_API_KEY": False, "BINANCE_API_SECRET": False, "BINANCE_TESTNET": False}
+        
+        for line in lines:
+            if line.startswith("BINANCE_API_KEY="):
+                new_lines.append(f"BINANCE_API_KEY={config.api_key}\n")
+                keys_updated["BINANCE_API_KEY"] = True
+            elif line.startswith("BINANCE_API_SECRET="):
+                new_lines.append(f"BINANCE_API_SECRET={config.api_secret}\n")
+                keys_updated["BINANCE_API_SECRET"] = True
+            elif line.startswith("BINANCE_TESTNET="):
+                new_lines.append(f"BINANCE_TESTNET={str(config.testnet).lower()}\n")
+                keys_updated["BINANCE_TESTNET"] = True
+            else:
+                new_lines.append(line)
+        
+        # Append valid missing keys
+        if not keys_updated["BINANCE_API_KEY"]:
+            new_lines.append(f"BINANCE_API_KEY={config.api_key}\n")
+        if not keys_updated["BINANCE_API_SECRET"]:
+            new_lines.append(f"BINANCE_API_SECRET={config.api_secret}\n")
+        if not keys_updated["BINANCE_TESTNET"]:
+            new_lines.append(f"BINANCE_TESTNET={str(config.testnet).lower()}\n")
+            
+        with open(env_path, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+            
+        logger.info("API Configuration updated and saved to .env")
+        
+        # 3. Re-initialize Binance Client
+        # We need to import main here to avoid circular imports at top level
+        import app.main as main_app
+        if main_app.binance_client:
+            await main_app.binance_client.close()
+            # The client reads settings from app.core.config.settings, which we just updated
+            await main_app.binance_client.initialize()
+            logger.info("Binance Client re-initialized with new settings")
+            
+        return {"status": "success", "message": "Configuration saved and client reconnected"}
+
+    except Exception as e:
+        logger.error(f"Failed to update API config: {e}")
         raise HTTPException(status_code=500, detail=str(e))

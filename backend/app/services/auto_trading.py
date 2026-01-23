@@ -137,6 +137,7 @@ class AutoTradingService:
         self.processing = False
         self.last_prediction_time = 0
         self.prediction_interval = 60 # Seconds (1 minute candles)
+        self.last_heartbeat_ts = 0
 
         # Notification / Stats
         self.bot_start_balance: Optional[float] = None
@@ -386,6 +387,21 @@ class AutoTradingService:
             # logger.debug(f"Skipping auto-trade for {data.get('symbol')}: Not in allowed list")
             return
 
+        # --- HEARTBEAT LOG ---
+        # Log every 60 seconds to show user the bot is alive and detailed status
+        now = time.time()
+        if now - self.last_heartbeat_ts > 60:
+            self.last_heartbeat_ts = now
+            price = float(data.get('close', 0))
+            
+            # Try to get recent indicators if available from state or calculate rough ones
+            # Since we haven't calculated indicators yet in this flow (it happens below), 
+            # we will defer rich logging to _trade_logic OR move this check inside _trade_logic.
+            # However, _trade_logic is only called if risk checks pass. 
+            # Let's keep a simple heartbeat here and a RICH heartbeat inside _trade_logic.
+            logger.info(f"👀 Scanning Market... {data.get('symbol')} @ ${price:.2f}")
+        # ---------------------
+
         # Check interval (avoid duplicate processing for same candle)
         # Assuming data comes every minute or tick
         if data.get('is_closed'): # Only trade on closed candles for stability
@@ -526,6 +542,25 @@ class AutoTradingService:
         regime_params = regime_info['strategy_params']
         
         logger.info(f"Market Regime: {current_regime} (Confidence: {regime_confidence:.2f})")
+        
+        # --- RICH HEARTBEAT / ANALYSIS LOG ---
+        # Log analysis details periodically (e.g. every 5 mins) or on every candle if user wants "verbose"
+        # We'll log concise analysis every candle since user asked for "24 indicators logic logs"
+        
+        # Format key indicators
+        rsi_val = market_state.get('rsi', 0)
+        stoch_k = market_state.get('stoch_k_mid', 0) # Using Mid term
+        trend = "BULL" if market_state.get('ema_21', 0) > market_state.get('ema_50', 0) else "BEAR"
+        
+        analysis_msg = (
+            f"📊 Analysis {symbol}: "
+            f"RSI={rsi_val:.1f} | "
+            f"Stoch(Mid)={stoch_k:.1f} | "
+            f"Trend={trend} | "
+            f"Regime={current_regime}"
+        )
+        logger.info(analysis_msg)
+        # -------------------------------------
         
         # 4. AI Prediction (AI acts as FILTER/VALIDATOR)
         ai_action = self.agent.live_predict(market_state)

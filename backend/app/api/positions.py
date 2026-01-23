@@ -7,7 +7,7 @@ from loguru import logger
 router = APIRouter()
 
 
-@router.get("/")
+@router.get("")
 async def get_positions():
     """Get all positions"""
     try:

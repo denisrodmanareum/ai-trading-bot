@@ -110,7 +110,7 @@ async def get_chart_data(symbol: str, interval: str = "1m", limit: int = 50):
         if main.binance_client is None:
             raise HTTPException(status_code=503, detail="Binance not connected")
         
-        klines = await main.binance_client.client.futures_klines(
+        klines = await main.binance_client.get_raw_klines(
             symbol=symbol,
             interval=interval,
             limit=limit

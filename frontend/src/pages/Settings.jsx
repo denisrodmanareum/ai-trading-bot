@@ -40,8 +40,8 @@ function Settings() {
 
   // API Config States
   const [apiConfig, setApiConfig] = useState({
-    binance_api_key: '',
-    binance_secret_key: '',
+    api_key: '',
+    api_secret: '',
     testnet: false
   });
 
@@ -52,6 +52,7 @@ function Settings() {
     fetchStrategyConfig();
     fetchNotificationSettings();
     fetchTelegramSettings();
+    fetchApiConfig();
   }, []);
 
   const fetchRiskStatus = async () => {
@@ -110,6 +111,56 @@ function Settings() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const fetchApiConfig = async () => {
+    try {
+      const res = await fetch('/api/settings/api-config');
+      if (res.ok) {
+        const data = await res.json();
+        setApiConfig({
+          api_key: data.api_key || '',
+          api_secret: data.api_secret || '', // Likely masked or empty
+          testnet: !!data.testnet
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const saveApiConfig = async () => {
+    setSaving(true);
+    try {
+      const payload = {
+        api_key: apiConfig.api_key,
+        api_secret: apiConfig.api_secret,
+        testnet: apiConfig.testnet
+      };
+
+      const res = await fetch('/api/settings/api-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        alert(data?.detail || 'API 설정 저장에 실패했습니다.');
+        return;
+      }
+
+      alert('API 설정이 저장되고 클라이언트가 재접속되었습니다.');
+      // Refresh to get potentially formatted/masked values back (though secret stays masked)
+      fetchApiConfig();
+
+    } catch (e) {
+      console.error(e);
+      alert('API 설정 저장 중 오류가 발생했습니다.');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -646,15 +697,100 @@ function Settings() {
               API Configuration
             </h3>
             <p style={{ fontSize: '0.8rem', color: '#666', marginBottom: '1.5rem' }}>
-              Binance API 키는 환경 변수(.env)에서 설정됩니다
+              Binance API 키 설정 (변경 시 봇이 재시작됩니다)
             </p>
-            <div style={{ padding: '2rem', background: '#000', borderRadius: '2px', textAlign: 'center' }}>
-              <p style={{ color: '#666', fontSize: '0.85rem' }}>
-                API 설정은 <code style={{ color: '#00b07c' }}>backend/.env</code> 파일에서 관리됩니다.
-              </p>
-              <p style={{ color: '#444', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-                BINANCE_API_KEY, BINANCE_SECRET_KEY
-              </p>
+
+            <div style={{ display: 'grid', gap: '1.5rem' }}>
+
+              {/* Testnet Toggle */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#000', padding: '1rem', borderRadius: '2px', border: '1px solid #222' }}>
+                <div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: '900', color: '#fff' }}>Testnet Mode</div>
+                  <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
+                    실제 자산이 아닌 테스트넷 환경 사용
+                  </div>
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={apiConfig.testnet}
+                    onChange={(e) => setApiConfig({ ...apiConfig, testnet: e.target.checked })}
+                  />
+                  <span style={{ color: apiConfig.testnet ? '#f0b90b' : '#666', fontSize: '0.85rem', fontWeight: '800' }}>
+                    {apiConfig.testnet ? 'TESTNET' : 'MAINNET'}
+                  </span>
+                </label>
+              </div>
+
+              {/* API Key */}
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.5rem', display: 'block' }}>
+                  Binance API Key
+                </label>
+                <input
+                  type="text"
+                  value={apiConfig.api_key}
+                  onChange={(e) => setApiConfig({ ...apiConfig, api_key: e.target.value })}
+                  placeholder="Insert API Key"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: '#0a0a0a',
+                    border: '1px solid #222',
+                    borderRadius: '2px',
+                    color: '#fff',
+                    fontSize: '0.85rem',
+                    fontFamily: 'monospace'
+                  }}
+                />
+              </div>
+
+              {/* API Secret */}
+              <div>
+                <label style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.5rem', display: 'block' }}>
+                  Binance Secret Key
+                </label>
+                <input
+                  type="password"
+                  value={apiConfig.api_secret}
+                  onChange={(e) => setApiConfig({ ...apiConfig, api_secret: e.target.value })}
+                  placeholder="Insert Secret Key (Hidden)"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    background: '#0a0a0a',
+                    border: '1px solid #222',
+                    borderRadius: '2px',
+                    color: '#fff',
+                    fontSize: '0.85rem',
+                    fontFamily: 'monospace'
+                  }}
+                />
+                <p style={{ fontSize: '0.7rem', color: '#444', marginTop: '0.5rem' }}>
+                  보안을 위해 기존 Secret Key는 표시되지 않으며, 변경 시에만 입력하세요.
+                </p>
+              </div>
+
+              {/* Save Button */}
+              <button
+                onClick={saveApiConfig}
+                disabled={saving}
+                style={{
+                  padding: '1rem',
+                  background: '#f0b90b',
+                  color: '#000',
+                  border: 'none',
+                  borderRadius: '2px',
+                  fontWeight: '900',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  textTransform: 'uppercase',
+                  marginTop: '0.5rem'
+                }}
+              >
+                {saving ? 'Saving & Reconnecting...' : 'Save API Configuration'}
+              </button>
+
             </div>
           </div>
         )}

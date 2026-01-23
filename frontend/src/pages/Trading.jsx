@@ -32,7 +32,7 @@ function Trading() {
   const [data, setData] = useState(null);
 
   const [strategy, setStrategy] = useState({ mode: 'SCALP', leverage_mode: 'AUTO', manual_leverage: 5 });
-  
+
   const [showSymbolDropdown, setShowSymbolDropdown] = useState(false);
   const [symbolSearch, setSymbolSearch] = useState('');
   const [aiAnalysis, setAiAnalysis] = useState(null); // AI analysis for manual positions
@@ -55,7 +55,7 @@ function Trading() {
     const timer = setInterval(() => { fetchTradingData(); fetchDashboardOverview(); }, 5000);
     return () => clearInterval(timer);
   }, [form.symbol]);
-  
+
   // Fetch AI analysis for positions periodically
   useEffect(() => {
     if (positions.length > 0) {
@@ -104,7 +104,7 @@ function Trading() {
       if (res.ok) setData(await res.json());
     } catch (e) { console.error(e); }
   };
-  
+
   const fetchAIAnalysis = async () => {
     try {
       const res = await fetch('/api/ai/analyze-positions');
@@ -135,9 +135,11 @@ function Trading() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          symbol: form.symbol, side: side, quantity: form.quantity,
+          symbol: form.symbol,
+          side: side,
+          quantity: parseFloat(form.quantity),
           order_type: activeOrderType.toUpperCase(),
-          price: activeOrderType === 'Limit' ? form.price : null
+          price: activeOrderType === 'Limit' && form.price ? parseFloat(form.price) : null
         })
       });
       if (res.ok) {
@@ -198,7 +200,7 @@ function Trading() {
             <span style={{ fontSize: '0.6rem', padding: '1px 4px', background: '#111', border: '1px solid #222', borderRadius: '1px', color: '#666', fontWeight: 'bold' }}>PERP</span>
             <span style={{ fontSize: '0.7rem', color: '#444' }}>▼</span>
           </div>
-          
+
           {/* Symbol Dropdown */}
           {showSymbolDropdown && (
             <div style={{
@@ -232,7 +234,7 @@ function Trading() {
                   outline: 'none'
                 }}
               />
-              
+
               {/* Symbol List */}
               <div style={{ padding: '0.5rem 0' }}>
                 {['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'MATICUSDT', 'DOTUSDT', 'AVAXUSDT', 'LINKUSDT', 'UNIUSDT', 'ATOMUSDT', 'LTCUSDT', 'NEARUSDT', 'APTUSDT', 'ARBUSDT', 'OPUSDT']
@@ -665,20 +667,25 @@ function Trading() {
                   </tr>
                 </thead>
                 <tbody>
-                  {openOrders.length > 0 ? openOrders.map((order, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #080808' }}>
-                      <td style={{ padding: '0.75rem 1rem', fontWeight: '800' }}>{order.symbol}</td>
-                      <td style={{ padding: '0.75rem', color: '#888' }}>{order.type}</td>
-                      <td style={{ padding: '0.75rem' }}><span style={{ color: order.side === 'BUY' ? '#00b07c' : '#ff5b5b', fontWeight: '800', fontSize: '0.7rem' }}>{order.side}</span></td>
-                      <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: '#bbb' }}>{order.price}</td>
-                      <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', fontWeight: '700' }}>{order.orig_qty}</td>
-                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                        <button
-                          onClick={() => handleCancelOrder(order.order_id)}
-                          style={{ background: 'transparent', border: '1px solid #222', color: '#666', padding: '2px 8px', borderRadius: '1px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: '900', textTransform: 'uppercase' }}>Cancel</button>
-                      </td>
-                    </tr>
-                  )) : (
+                  {openOrders.length > 0 ? openOrders.map((order, i) => {
+                    const oid = order.orderId || order.order_id;
+                    const qty = order.origQty || order.orig_qty || order.quantity;
+                    const price = order.price || order.limitPrice; // Fallback just in case
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid #080808' }}>
+                        <td style={{ padding: '0.75rem 1rem', fontWeight: '800' }}>{order.symbol}</td>
+                        <td style={{ padding: '0.75rem', color: '#888' }}>{order.type}</td>
+                        <td style={{ padding: '0.75rem' }}><span style={{ color: order.side === 'BUY' ? '#00b07c' : '#ff5b5b', fontWeight: '800', fontSize: '0.7rem' }}>{order.side}</span></td>
+                        <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: '#bbb' }}>{price}</td>
+                        <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', fontWeight: '700' }}>{qty}</td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                          <button
+                            onClick={() => handleCancelOrder(oid)}
+                            style={{ background: 'transparent', border: '1px solid #222', color: '#666', padding: '2px 8px', borderRadius: '1px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: '900', textTransform: 'uppercase' }}>Cancel</button>
+                        </td>
+                      </tr>
+                    );
+                  }) : (
                     <tr><td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: '#222', fontSize: '0.8rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.1em' }}>No open orders</td></tr>
                   )}
                 </tbody>

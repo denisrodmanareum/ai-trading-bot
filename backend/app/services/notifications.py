@@ -10,6 +10,7 @@ from enum import Enum
 from pathlib import Path
 import json
 import aiohttp
+from datetime import datetime
 
 
 class NotificationType(Enum):
@@ -22,6 +23,7 @@ class NotificationType(Enum):
     AI_TRAINING_COMPLETE = "ai_training_complete"
     PRICE_ALERT = "price_alert"
     SYSTEM_ERROR = "system_error"
+    STARTUP = "startup"
 
 
 class NotificationManager:
@@ -245,6 +247,50 @@ async def notify_position_closed(symbol: str, pnl: float, pnl_percent: float):
         NotificationType.POSITION_CLOSED,
         "Position Closed",
         f"{emoji} {symbol}: ${pnl:.2f} ({pnl_percent:.2f}%)"
+    )
+
+
+
+async def notify_startup(
+    model_name: str,
+    ip_address: str,
+    balance: float,
+    unrealized_pnl: float,
+    pnl_percent: float,
+    active_positions: list
+):
+    """봇 시작 알림"""
+    
+    # 포지션 정보 포맷팅
+    pos_text = "None"
+    if active_positions:
+        pos_lines = []
+        for p in active_positions:
+            pnl_emoji = "🟢" if p['unrealized_pnl'] >= 0 else "🔴"
+            pos_lines.append(
+                f"{pnl_emoji} {p['symbol']} ({p['leverage']}x): ${p['unrealized_pnl']:.2f}"
+            )
+        pos_text = "\n".join(pos_lines)
+
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    message = (
+        f"🚀 <b>AI Trading Bot Started</b>\n\n"
+        f"🕒 <b>Time:</b> {current_time}\n"
+        f"🤖 <b>Model:</b> {model_name}\n"
+        f"🌐 <b>IP/Host:</b> {ip_address}\n\n"
+        f"💰 <b>Account Info:</b>\n"
+        f"• Balance: ${balance:,.2f}\n"
+        f"• Unrealized PnL: ${unrealized_pnl:,.2f} ({pnl_percent:.2f}%)\n\n"
+        f"📊 <b>Active Positions:</b>\n"
+        f"{pos_text}"
+    )
+    
+    await notification_manager.send(
+        NotificationType.SYSTEM_ERROR, # Using SYSTEM_ERROR type for high priority or create new
+        "Bot Started",
+        message,
+        channels=['telegram', 'desktop']
     )
 
 

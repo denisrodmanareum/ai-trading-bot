@@ -63,19 +63,31 @@ async def get_status():
     global trading_agent
     
     # Check if auto trading is running
+    is_running = False
+    active_agent = None
+    
     try:
         from app.main import auto_trading_service
-        is_running = auto_trading_service.running if auto_trading_service else False
-    except:
+        if auto_trading_service:
+            is_running = auto_trading_service.running
+            active_agent = auto_trading_service.agent
+    except Exception as e:
+        logger.warning(f"Failed to access auto_trading_service: {e}")
         is_running = False
     
-    if trading_agent is None:
-        trading_agent = TradingAgent()
+    # Use the active agent from the service if available, otherwise fall back to local global
+    target_agent = active_agent if active_agent else trading_agent
     
-    model_info = trading_agent.get_model_info()
+    if target_agent is None:
+        target_agent = TradingAgent()
+        # Update local global if it was None
+        if trading_agent is None:
+            trading_agent = target_agent
+    
+    model_info = target_agent.get_model_info()
     
     return {
-        "model_loaded": trading_agent.model is not None,
+        "model_loaded": target_agent.model is not None,
         "model_info": model_info,
         "training_status": training_status,
         "running": is_running
@@ -690,6 +702,8 @@ async def trigger_daily_review():
             
             # Additional: Generate improvement suggestions based on metrics
             suggestions = reviewer.suggest_ai_improvements()
+            
+            os.makedirs("data/logs", exist_ok=True)
             with open("data/logs/improvement_suggestions.json", 'w') as f:
                 json.dump(suggestions, f, indent=2)
         finally:
