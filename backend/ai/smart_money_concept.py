@@ -37,9 +37,9 @@ class OrderBlock:
     type: str  # 'BULLISH' or 'BEARISH'
     strength: int  # 1-5 (강도)
     volume: float
+    created_at: datetime
     tested: bool = False
     test_count: int = 0
-    created_at: datetime
     
     def is_active(self, current_price: float) -> bool:
         """오더블록이 아직 활성 상태인지 확인"""
@@ -62,8 +62,8 @@ class FairValueGap:
     top: float
     bottom: float
     type: str  # 'BULLISH' or 'BEARISH'
-    filled: bool = False
     created_at: datetime
+    filled: bool = False
     
     def is_filled(self, current_price: float) -> bool:
         """갭이 채워졌는지 확인"""
@@ -84,8 +84,8 @@ class BreakOfStructure:
     previous_high: float
     previous_low: float
     strength: int  # 1-5
-    confirmed: bool = False
     timestamp: datetime
+    confirmed: bool = False
 
 
 class MarketStructure:
