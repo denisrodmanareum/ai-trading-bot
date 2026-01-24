@@ -55,6 +55,9 @@ function AIHub() {
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [weeklySummary, setWeeklySummary] = useState(null);
 
+  // Available Symbols State
+  const [availableSymbols, setAvailableSymbols] = useState([]);
+
   // Fetch data on mount
   useEffect(() => {
     fetchModels();
@@ -63,6 +66,7 @@ function AIHub() {
     fetchReports();
     fetchLearningProgress();
     fetchWeeklySummary();
+    fetchAvailableSymbols();
   }, []);
 
   // AI Control Functions
@@ -106,6 +110,24 @@ function AIHub() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const fetchAvailableSymbols = async () => {
+    try {
+      // 하이브리드 모드에서 선택된 코인들만 가져오기
+      const res = await fetch('/api/coins/selection');
+      if (res.ok) {
+        const data = await res.json();
+        const symbols = data.selected_coins || [];
+        // USDT 페어로 변환 (예: BTC -> BTCUSDT)
+        const symbolsWithUSDT = symbols.map(coin => coin.includes('USDT') ? coin : `${coin}USDT`);
+        setAvailableSymbols(symbolsWithUSDT);
+      }
+    } catch (e) {
+      console.error(e);
+      // 실패시 기본 코어 코인들 표시
+      setAvailableSymbols(['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT']);
     }
   };
 
@@ -565,6 +587,7 @@ function AIHub() {
       if (res.ok) {
         await fetchCoinSelection();
         await fetchCoinStats();
+        await fetchAvailableSymbols(); // 학습 가능한 코인 목록 업데이트
         showNotification('success', 'Coin selection rebalanced successfully!');
       }
     } catch (e) {
@@ -585,6 +608,7 @@ function AIHub() {
       if (res.ok) {
         await fetchCoinSelection();
         await fetchCoinStats();
+        await fetchAvailableSymbols(); // 학습 가능한 코인 목록 업데이트
         showNotification('success', 'Configuration updated successfully!');
       }
     } catch (e) {
@@ -599,6 +623,9 @@ function AIHub() {
       fetchCoinSelection();
       fetchCoinCandidates();
       fetchCoinStats();
+    }
+    if (activeTab === 'control') {
+      fetchAvailableSymbols(); // control 탭에서 최신 심볼 목록 가져오기
     }
   }, [activeTab]);
 
@@ -726,11 +753,9 @@ function AIHub() {
                   <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#888', marginBottom: '0.5rem' }}>
                     SYMBOL (학습할 코인)
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={config.symbol}
                     onChange={(e) => setConfig({ ...config, symbol: e.target.value })}
-                    placeholder="예: BTCUSDT, ETHUSDT, SOLUSDT"
                     style={{
                       width: '100%',
                       padding: '0.6rem',
@@ -739,11 +764,27 @@ function AIHub() {
                       borderRadius: '3px',
                       color: '#fff',
                       fontSize: '0.85rem',
-                      outline: 'none'
+                      outline: 'none',
+                      cursor: 'pointer'
                     }}
-                  />
+                  >
+                    {availableSymbols.length > 0 ? (
+                      availableSymbols.map((symbol) => (
+                        <option key={symbol} value={symbol}>
+                          {symbol}
+                        </option>
+                      ))
+                    ) : (
+                      <>
+                        <option value="BTCUSDT">BTCUSDT</option>
+                        <option value="ETHUSDT">ETHUSDT</option>
+                        <option value="SOLUSDT">SOLUSDT</option>
+                        <option value="BNBUSDT">BNBUSDT</option>
+                      </>
+                    )}
+                  </select>
                   <span style={{ fontSize: '0.65rem', color: '#666', marginTop: '0.25rem', display: 'block' }}>
-                    💡 모든 코인 학습 가능 (BTC, ETH, SOL, BNB 등)
+                    💡 하이브리드 모드에서 선택된 코인만 학습 가능
                   </span>
                 </div>
 
