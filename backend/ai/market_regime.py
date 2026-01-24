@@ -204,14 +204,21 @@ class MarketRegimeDetector:
         params = self.get_strategy_params(regime)
         return signal_strength >= params["min_signal_strength"]
     
-    def adjust_leverage(self, base_leverage: int, regime: MarketRegime) -> int:
+    def adjust_leverage(self, base_leverage: int, regime: MarketRegime, symbol: str = "BTCUSDT") -> int:
         """
-        Adjust leverage based on market regime
+        Adjust leverage based on market regime and coin type
+        - Core coins (BTC, ETH, SOL, BNB): Max 10x
+        - Other coins: Max 5x
         """
         params = self.get_strategy_params(regime)
         adjusted = int(base_leverage * params["leverage_multiplier"])
         
+        # Determine max leverage based on coin type
+        core_coins = ['BTC', 'ETH', 'SOL', 'BNB']
+        is_core_coin = any(symbol.startswith(coin) for coin in core_coins)
+        max_leverage = 10 if is_core_coin else 5
+        
         # Safety limits
-        adjusted = max(1, min(adjusted, 20))  # 1-20x range
+        adjusted = max(1, min(adjusted, max_leverage))
         
         return adjusted

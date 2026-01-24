@@ -103,7 +103,7 @@ async def train_agent(
     reward_strategy: str = "simple"
 ):
     """Train the trading agent"""
-    logger.info(f"Starting training for {episodes} episodes...")
+    logger.info(f"🎯 Starting training for {symbol} ({interval}) - {episodes} episodes...")
     
     try:
         # Fetch training data
@@ -112,33 +112,28 @@ async def train_agent(
         # Calculate actual timesteps based on data length
         # 1 Episode = 1 full pass through the data
         total_timesteps = episodes * len(df)
-        logger.info(f"Data length: {len(df)} candles. Total timesteps: {total_timesteps}")
+        logger.info(f"📊 Data length: {len(df)} candles. Total timesteps: {total_timesteps}")
         
         # Create agent
         agent = TradingAgent()
         
-        # Train
+        # Train (interval 파라미터 추가)
         model_path = agent.train(
             df=df,
             total_timesteps=total_timesteps,
             save_freq=save_freq,
             reward_strategy=reward_strategy,
             leverage=leverage,
-            symbol=symbol
+            symbol=symbol,
+            interval=interval  # ✅ interval 전달
         )
         
-        # Enforce limit one last time
-        try:
-            from cleanup_models import cleanup_models
-            cleanup_models()
-        except Exception as e:
-            logger.error(f"Cleanup failed: {e}")
-        
-        logger.info(f"Training completed! Model saved to {model_path}")
+        logger.info(f"✅ Training completed! Model saved to {model_path}")
+        logger.info(f"📁 Model name: ppo_{symbol}_{interval}_YYYYMMDD_HHMM.zip")
         return model_path
         
     except Exception as e:
-        logger.error(f"Training failed: {e}")
+        logger.error(f"❌ Training failed: {e}")
         raise
 
 

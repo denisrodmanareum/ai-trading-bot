@@ -627,28 +627,36 @@ function Trading() {
                     <th style={{ padding: '0.6rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Size</th>
                     <th style={{ padding: '0.6rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Entry Price</th>
                     <th style={{ padding: '0.6rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Mark Price</th>
+                    <th style={{ padding: '0.6rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Leverage</th>
                     <th style={{ padding: '0.6rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Unrealized PnL</th>
                     <th style={{ padding: '0.6rem 1rem', textAlign: 'right', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {positions.length > 0 ? positions.map((pos, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #080808', transition: 'background 0.2s' }}>
-                      <td style={{ padding: '0.75rem 1rem', fontWeight: '800' }}>{pos.symbol} <span style={{ color: pos.position_amt > 0 ? '#00b07c' : '#ff5b5b', fontSize: '0.65rem', marginLeft: '4px' }}>{pos.position_amt > 0 ? 'LONG' : 'SHORT'}</span></td>
-                      <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', fontWeight: '700' }}>{Math.abs(pos.position_amt).toFixed(4)}</td>
-                      <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: '#bbb' }}>{pos.entry_price?.toLocaleString()}</td>
-                      <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: '#bbb' }}>{data?.prices?.[pos.symbol]?.toLocaleString()}</td>
-                      <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: pos.unrealized_pnl >= 0 ? '#00b07c' : '#ff5b5b', fontWeight: '900' }}>
-                        {pos.unrealized_pnl >= 0 ? '+' : ''}{pos.unrealized_pnl.toFixed(2)} ({((pos.unrealized_pnl / (pos.entry_price * Math.abs(pos.position_amt) / (strategy.manual_leverage || 5))) * 100).toFixed(2)}%)
-                      </td>
-                      <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
-                        <button
-                          onClick={() => handleClosePosition(pos.symbol)}
-                          style={{ background: 'transparent', border: '1px solid #222', color: '#666', padding: '2px 8px', borderRadius: '1px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: '900', textTransform: 'uppercase' }}>Close</button>
-                      </td>
-                    </tr>
-                  )) : (
-                    <tr><td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: '#222', fontSize: '0.8rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.1em' }}>No active positions</td></tr>
+                  {positions.length > 0 ? positions.map((pos, i) => {
+                    const sizeUSDT = Math.abs(pos.position_amt) * (pos.entry_price || 0);
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid #080808', transition: 'background 0.2s' }}>
+                        <td style={{ padding: '0.75rem 1rem', fontWeight: '800' }}>{pos.symbol} <span style={{ color: pos.position_amt > 0 ? '#00b07c' : '#ff5b5b', fontSize: '0.65rem', marginLeft: '4px' }}>{pos.position_amt > 0 ? 'LONG' : 'SHORT'}</span></td>
+                        <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', fontWeight: '700' }}>
+                          <div>{Math.abs(pos.position_amt).toFixed(4)}</div>
+                          <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '2px' }}>${sizeUSDT.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                        </td>
+                        <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: '#bbb' }}>{pos.entry_price?.toLocaleString()}</td>
+                        <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: '#bbb' }}>{data?.prices?.[pos.symbol]?.toLocaleString()}</td>
+                        <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: '#f0b90b', fontWeight: '800' }}>{pos.leverage || 5}x</td>
+                        <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: pos.unrealized_pnl >= 0 ? '#00b07c' : '#ff5b5b', fontWeight: '900' }}>
+                          {pos.unrealized_pnl >= 0 ? '+' : ''}{pos.unrealized_pnl.toFixed(2)} ({((pos.unrealized_pnl / (pos.entry_price * Math.abs(pos.position_amt) / (pos.leverage || strategy.manual_leverage || 5))) * 100).toFixed(2)}%)
+                        </td>
+                        <td style={{ padding: '0.75rem 1rem', textAlign: 'right' }}>
+                          <button
+                            onClick={() => handleClosePosition(pos.symbol)}
+                            style={{ background: 'transparent', border: '1px solid #222', color: '#666', padding: '2px 8px', borderRadius: '1px', cursor: 'pointer', fontSize: '0.65rem', fontWeight: '900', textTransform: 'uppercase' }}>Close</button>
+                        </td>
+                      </tr>
+                    );
+                  }) : (
+                    <tr><td colSpan="7" style={{ textAlign: 'center', padding: '3rem', color: '#222', fontSize: '0.8rem', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.1em' }}>No active positions</td></tr>
                   )}
                 </tbody>
               </table>

@@ -641,9 +641,9 @@ class AutoTradingService:
                      leverage = self.strategy_config.manual_leverage
                  else:
                      base_leverage = tech_signal.get('leverage', 5)
-                     # Adjust leverage based on market regime
-                     leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime)
-                     logger.info(f"Leverage adjusted by regime: {base_leverage} -> {leverage}")
+                     # Adjust leverage based on market regime and coin type
+                     leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime, symbol)
+                     logger.info(f"Leverage adjusted by regime: {base_leverage} -> {leverage}x (Symbol: {symbol})")
                  # ----------------------
                  
                  reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
@@ -682,9 +682,9 @@ class AutoTradingService:
                  final_action = ai_action
                  # Use regime-adjusted leverage for AI-first trades
                  base_leverage = 5
-                 leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime)
+                 leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime, symbol)
                  reason = f"AI_First_{current_regime}"
-                 logger.info(f"AI-Initiated Trade: {ai_action_name} | Regime: {current_regime} | Lev: {leverage}x")
+                 logger.info(f"AI-Initiated Trade: {ai_action_name} | Regime: {current_regime} | Lev: {leverage}x | Symbol: {symbol}")
             elif ai_action in [1, 2] and not ai_first_allowed:
                  logger.info(f"AI wants to trade but regime {current_regime} blocks AI-first entries")
                  final_action = 0

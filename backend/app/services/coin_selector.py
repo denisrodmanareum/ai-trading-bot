@@ -22,8 +22,8 @@ class CoinSelector:
         
         # Default configuration
         self.config = {
-            'core_coins': ['BTC', 'ETH'],
-            'max_altcoins': 5,
+            'core_coins': ['BTC', 'ETH', 'SOL', 'BNB'],
+            'max_altcoins': 3,
             'max_total': 7,
             'rebalance_interval_hours': 1,
             'filters': {
@@ -42,7 +42,7 @@ class CoinSelector:
         }
         
         # Initialize with fallback coins (important for first run)
-        self.selected_coins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
+        self.selected_coins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT']
         self.last_rebalance = None
         self.coin_scores = {s: 80.0 for s in self.selected_coins}
     
@@ -328,7 +328,7 @@ class CoinSelector:
     
     def _get_fallback_selection(self) -> Dict:
         """Fallback when rebalance fails"""
-        fallback = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
+        fallback = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT']
         
         return {
             'selected_coins': fallback,

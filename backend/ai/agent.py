@@ -21,30 +21,26 @@ from cleanup_models import cleanup_models
 class TradingCallback(BaseCallback):
     """Custom callback for monitoring training progress"""
     
-    def __init__(self, verbose=0, save_freq=1000, save_path='./data/models', symbol='BTCUSDT'):
+    def __init__(self, verbose=0, save_freq=1000, save_path='./data/models', symbol='BTCUSDT', interval='1h'):
         super().__init__(verbose)
         self.save_freq = save_freq
         self.save_path = save_path
         self.symbol = symbol
+        self.interval = interval
         self.episode_rewards = []
         self.episode_lengths = []
         
         os.makedirs(save_path, exist_ok=True)
     
     def _on_step(self) -> bool:
-        if self.n_calls % self.save_freq == 0:
-            model_path = os.path.join(
-                self.save_path,
-                f'ppo_trading_{self.symbol}_{self.n_calls}.zip'
-            )
-            self.model.save(model_path)
-            logger.info(f"Model saved at step {self.n_calls}")
-            
-            # Enforce model limit
-            try:
-                cleanup_models(directory=self.save_path)
-            except Exception as e:
-                logger.error(f"Cleanup failed: {e}")
+        # ⚠️ 중간 저장 비활성화 - 최종 모델만 저장
+        # if self.n_calls % self.save_freq == 0:
+        #     model_path = os.path.join(
+        #         self.save_path,
+        #         f'ppo_{self.symbol}_{self.interval}_{self.n_calls}.zip'
+        #     )
+        #     self.model.save(model_path)
+        #     logger.info(f"Model saved at step {self.n_calls}")
         
         return True
     
@@ -149,33 +145,48 @@ class TradingAgent:
             # Ideally `save_model` takes `symbol` arg.
             pass
 
-    def save_model(self, path: str = None, symbol: str = "BTCUSDT"):
-        """Save current model"""
+    def save_model(self, path: str = None, symbol: str = "BTCUSDT", interval: str = "1h"):
+        """Save current model with symbol and interval info"""
         if self.model is None:
             logger.warning("No model to save")
             return
         
         if path is None:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+            # 새로운 파일명 형식: ppo_BTCUSDT_1m_20240124_1430.zip
             path = os.path.join(
                 settings.AI_MODEL_PATH,
-                f"ppo_trading_{symbol}_{timestamp}.zip"
+                f"ppo_{symbol}_{interval}_{timestamp}.zip"
             )
         
         os.makedirs(os.path.dirname(path), exist_ok=True)
         self.model.save(path)
         self.model_path = path
-        logger.info(f"Model saved to {path}")
+        logger.info(f"✅ Model saved to {path}")
         
         # Save training history
         history_path = path.replace('.zip', '_history.json')
         with open(history_path, 'w') as f:
             json.dump(self.training_history, f, indent=2)
             
-        # Enforce model limit
+        # 같은 symbol+interval의 이전 모델들 삭제 (최신 1개만 유지)
         try:
-            from cleanup_models import cleanup_models
-            cleanup_models(directory=settings.AI_MODEL_PATH)
+            import glob
+            pattern = os.path.join(settings.AI_MODEL_PATH, f"ppo_{symbol}_{interval}_*.zip")
+            existing_models = sorted(glob.glob(pattern), reverse=True)
+            
+            # 현재 저장한 모델을 제외한 나머지 삭제
+            for old_model in existing_models[1:]:
+                try:
+                    os.remove(old_model)
+                    # 히스토리 파일도 삭제
+                    old_history = old_model.replace('.zip', '_history.json')
+                    if os.path.exists(old_history):
+                        os.remove(old_history)
+                    logger.info(f"🗑️ Removed old model: {os.path.basename(old_model)}")
+                except Exception as e:
+                    logger.error(f"Failed to remove {old_model}: {e}")
+                    
         except Exception as e:
             logger.error(f"Cleanup failed: {e}")
         
@@ -217,10 +228,11 @@ class TradingAgent:
         total_timesteps: int = 100000,
         save_freq: int = 10000,
         symbol: str = "BTCUSDT",
+        interval: str = "1h",
         **env_kwargs
     ):
         """Train the agent"""
-        logger.info("Starting training...")
+        logger.info(f"🚀 Starting training for {symbol} ({interval})...")
         
         # Create environment
         env = self.create_environment(df, **env_kwargs)
@@ -232,11 +244,12 @@ class TradingAgent:
         else:
             self.model.set_env(vec_env)
         
-        # Create callback
+        # Create callback (중간 저장은 비활성화됨)
         callback = TradingCallback(
             save_freq=save_freq,
             save_path=settings.AI_MODEL_PATH,
-            symbol=symbol
+            symbol=symbol,
+            interval=interval
         )
         
         # Train
@@ -251,14 +264,14 @@ class TradingAgent:
             self.training_history['episodes'].extend(callback.episode_rewards)
             self.training_history['rewards'].extend(callback.episode_rewards)
             
-            logger.info("Training completed successfully")
+            logger.info("✅ Training completed successfully")
             
-            # Save final model
-            final_path = self.save_model(symbol=symbol)
+            # Save final model (최종 모델만 저장)
+            final_path = self.save_model(symbol=symbol, interval=interval)
             return final_path
             
         except Exception as e:
-            logger.error(f"Training failed: {e}")
+            logger.error(f"❌ Training failed: {e}")
             raise
     
     def predict(self, observation, deterministic: bool = True):

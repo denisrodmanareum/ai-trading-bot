@@ -1,41 +1,5 @@
-# Core
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-websockets==14.1
-python-multipart==0.0.20
-
-# Binance
-python-binance==1.0.19
-
-# Data Processing
-pandas==2.2.3
-numpy==1.26.4
-
-# Technical Analysis
-ta==0.11.0
-
-# Database
-sqlalchemy==2.0.36
-aiosqlite==0.20.0
-
-# Utils
-python-dotenv==1.0.1
-pydantic==2.10.6
-pydantic-settings==2.7.1
-loguru==0.7.3
-aiohttp==3.11.11
-python-dateutil==2.9.0.post0
-
-# AI/ML (선택사항)
-torch>=2.6.0
-gymnasium==1.0.0
-stable-baselines3==2.4.0
-scikit-learn<1.6.0
-optuna==4.2.0
-apscheduler==3.11.0
-
-# Dashboard V2 dependencies
-vaderSentiment==3.3.2
-feedparser==6.0.11
-beautifulsoup4==4.12.3
-lxml==5.1.0
+fastapi
+uvicorn
+feedparser
+vaderSentiment
+beautifulsoup4

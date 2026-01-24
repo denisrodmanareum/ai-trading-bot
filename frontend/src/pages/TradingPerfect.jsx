@@ -21,6 +21,7 @@ function TradingPerfect() {
   const [balance, setBalance] = useState({ available: 0, total: 0, unrealized_pnl: 0 });
   const [ticker, setTicker] = useState(null);
   const [fundingCountdown, setFundingCountdown] = useState('');
+  const [prices, setPrices] = useState({}); // 모든 심볼의 가격 저장
 
   // AI Control State
   const [aiRunning, setAiRunning] = useState(false);
@@ -48,13 +49,14 @@ function TradingPerfect() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [posRes, ordRes, balRes, aiRes, configRes, symRes] = await Promise.all([
+        const [posRes, ordRes, balRes, aiRes, configRes, symRes, dashRes] = await Promise.all([
           fetch('/api/trading/positions'),
           fetch(`/api/trading/orders?symbol=${symbol}`),
           fetch('/api/trading/balance'),
           fetch('/api/ai/status'),
           fetch('/api/trading/strategy/config'),
-          fetch('/api/trading/symbols')
+          fetch('/api/trading/symbols'),
+          fetch('/api/dashboard/overview')
         ]);
 
         if (posRes.ok) setPositions(await posRes.json());
@@ -73,6 +75,10 @@ function TradingPerfect() {
         if (symRes.ok) {
           const data = await symRes.json();
           setAvailableSymbols(data.symbols || []);
+        }
+        if (dashRes.ok) {
+          const dashData = await dashRes.json();
+          setPrices(dashData.prices || {});
         }
 
         // Fetch Ticker Info
@@ -446,6 +452,7 @@ function TradingPerfect() {
                         <th style={{ padding: '10px' }}>Size</th>
                         <th style={{ padding: '10px' }}>Entry</th>
                         <th style={{ padding: '10px' }}>Mark</th>
+                        <th style={{ padding: '10px' }}>Leverage</th>
                         <th style={{ padding: '10px' }}>PnL (ROE%)</th>
                       </>
                     ) : (
@@ -461,39 +468,47 @@ function TradingPerfect() {
                   </tr>
                 </thead>
                 <tbody>
-                  {activeBottomTab === 'positions' && positions.map((p, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid #111' }}>
-                      <td style={{ padding: '10px 14px' }}>
-                        <span style={{ fontWeight: '800' }}>{p.symbol}</span>
-                        <span style={{ marginLeft: '6px', fontSize: '0.6rem', color: p.position_amt > 0 ? '#00b07c' : '#ff4b4b' }}>{p.position_amt > 0 ? 'LONG' : 'SHORT'}</span>
-                      </td>
-                      <td style={{ padding: '10px', fontFamily: 'monospace' }}>{Math.abs(p.position_amt).toFixed(4)}</td>
-                      <td style={{ padding: '10px', color: '#888' }}>{p.entry_price?.toLocaleString()}</td>
-                      <td style={{ padding: '10px', color: '#888' }}>{currentPrice.toLocaleString()}</td>
-                      <td style={{ padding: '10px', color: p.unrealized_pnl >= 0 ? '#00b07c' : '#ff4b4b', fontWeight: '700' }}>
-                        {p.unrealized_pnl?.toFixed(2)} ({((p.unrealized_pnl / (Math.abs(p.position_amt) * p.entry_price / leverage)) * 100).toFixed(2)}%)
-                      </td>
-                      <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                        <button
-                          onClick={() => handleClosePosition(p.symbol)}
-                          style={{
-                            background: '#111',
-                            border: '1px solid #222',
-                            color: '#ff4b4b',
-                            padding: '2px 8px',
-                            borderRadius: '3px',
-                            fontSize: '0.65rem',
-                            fontWeight: '700',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Close
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {activeBottomTab === 'positions' && positions.map((p, i) => {
+                    const sizeUSDT = Math.abs(p.position_amt) * (p.entry_price || 0);
+                    const posMarkPrice = prices[p.symbol] || 0; // 각 포지션의 심볼별 가격
+                    return (
+                      <tr key={i} style={{ borderBottom: '1px solid #111' }}>
+                        <td style={{ padding: '10px 14px' }}>
+                          <span style={{ fontWeight: '800' }}>{p.symbol}</span>
+                          <span style={{ marginLeft: '6px', fontSize: '0.6rem', color: p.position_amt > 0 ? '#00b07c' : '#ff4b4b' }}>{p.position_amt > 0 ? 'LONG' : 'SHORT'}</span>
+                        </td>
+                        <td style={{ padding: '10px', fontFamily: 'monospace' }}>
+                          <div>{Math.abs(p.position_amt).toFixed(4)}</div>
+                          <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '2px' }}>${sizeUSDT.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
+                        </td>
+                        <td style={{ padding: '10px', color: '#888' }}>{p.entry_price?.toLocaleString()}</td>
+                        <td style={{ padding: '10px', color: '#888' }}>{posMarkPrice ? posMarkPrice.toLocaleString() : '-'}</td>
+                        <td style={{ padding: '10px', color: '#f0b90b', fontWeight: '700' }}>{p.leverage || leverage || 10}x</td>
+                        <td style={{ padding: '10px', color: p.unrealized_pnl >= 0 ? '#00b07c' : '#ff4b4b', fontWeight: '700' }}>
+                          {p.unrealized_pnl?.toFixed(2)} ({((p.unrealized_pnl / (Math.abs(p.position_amt) * p.entry_price / (p.leverage || leverage || 10))) * 100).toFixed(2)}%)
+                        </td>
+                        <td style={{ padding: '10px 14px', textAlign: 'right' }}>
+                          <button
+                            onClick={() => handleClosePosition(p.symbol)}
+                            style={{
+                              background: '#111',
+                              border: '1px solid #222',
+                              color: '#ff4b4b',
+                              padding: '2px 8px',
+                              borderRadius: '3px',
+                              fontSize: '0.65rem',
+                              fontWeight: '700',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Close
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {activeBottomTab === 'positions' && positions.length === 0 && (
-                    <tr><td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: '#333' }}>No active positions</td></tr>
+                    <tr><td colSpan="7" style={{ textAlign: 'center', padding: '40px', color: '#333' }}>No active positions</td></tr>
                   )}
 
                   {activeBottomTab === 'orders' && orders.map((o, i) => {

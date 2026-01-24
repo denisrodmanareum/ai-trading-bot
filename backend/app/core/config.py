@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     # backend/.env 에 아래 키로 넣어주세요:
     # BINANCE_API_KEY=...
     # BINANCE_API_SECRET=...
-    BINANCE_API_KEY: str = "C4YGEOnpfCD5mVFVkQN6l2r2Td1J9L3M6MAZsww232trc02YjAP1ydRcfm5RFKxZ"
-    BINANCE_API_SECRET: str = "YEuI6Ice9hbowZcOcmKQzsn8Q9b1TrwXc6Rdf0iV4yLHgjAFzrONCE8k7GdHRweJ"
+    BINANCE_API_KEY: str = "zb20XMIislFoTrI84WOvcPhoHvffKbALO2tQRwnrCCtcs5wh9rLqba78yXFk2OY8"
+    BINANCE_API_SECRET: str = "yn2cZ5YRvs6PFA4VuipXCmqS8LOKTXT24UOYz93ygYjMzUMCmHrTRNVwfCga7vqk"
     BINANCE_TESTNET: bool = True
     
     # Trading

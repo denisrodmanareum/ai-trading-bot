@@ -16,6 +16,7 @@ function TradingPro() {
   const [currentPrice, setCurrentPrice] = useState(0);
   const [positions, setPositions] = useState([]);
   const [balance, setBalance] = useState({ available: 0, total: 0 });
+  const [prices, setPrices] = useState({}); // 모든 심볼의 가격 저장
 
   // Order Form State
   const [orderSide, setOrderSide] = useState('BUY'); // BUY or SELL
@@ -34,13 +35,18 @@ function TradingPro() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [posRes, balRes] = await Promise.all([
+        const [posRes, balRes, dashRes] = await Promise.all([
           fetch('/api/trading/positions'),
-          fetch('/api/trading/balance')
+          fetch('/api/trading/balance'),
+          fetch('/api/dashboard/overview')
         ]);
 
         if (posRes.ok) setPositions(await posRes.json());
         if (balRes.ok) setBalance(await balRes.json());
+        if (dashRes.ok) {
+          const dashData = await dashRes.json();
+          setPrices(dashData.prices || {});
+        }
       } catch (e) {
         console.error('Failed to fetch data:', e);
       }
@@ -578,6 +584,7 @@ function TradingPro() {
                   <th style={{ padding: '10px', textAlign: 'right', fontWeight: '600' }}>Size</th>
                   <th style={{ padding: '10px', textAlign: 'right', fontWeight: '600' }}>Entry</th>
                   <th style={{ padding: '10px', textAlign: 'right', fontWeight: '600' }}>Mark</th>
+                  <th style={{ padding: '10px', textAlign: 'right', fontWeight: '600' }}>Leverage</th>
                   <th style={{ padding: '10px', textAlign: 'right', fontWeight: '600' }}>PnL</th>
                   <th style={{ padding: '10px 20px', textAlign: 'right', fontWeight: '600' }}>Action</th>
                 </tr>
@@ -586,6 +593,8 @@ function TradingPro() {
                 {positions.map((pos, idx) => {
                   const isLong = pos.position_amt > 0;
                   const pnlColor = pos.unrealized_pnl >= 0 ? '#00b07c' : '#ff4b4b';
+                  const sizeUSDT = Math.abs(pos.position_amt) * (pos.entry_price || 0);
+                  const posMarkPrice = prices[pos.symbol] || 0; // 각 포지션의 심볼별 가격
                   return (
                     <tr
                       key={idx}
@@ -604,13 +613,17 @@ function TradingPro() {
                         </div>
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace' }}>
-                        {Math.abs(pos.position_amt).toFixed(4)}
+                        <div>{Math.abs(pos.position_amt).toFixed(4)}</div>
+                        <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '2px' }}>${sizeUSDT.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#ccc' }}>
                         {pos.entry_price?.toLocaleString()}
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#ccc' }}>
-                        {currentPrice.toLocaleString()}
+                        {posMarkPrice ? posMarkPrice.toLocaleString() : '-'}
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#f0b90b', fontWeight: '700' }}>
+                        {pos.leverage || leverage || 10}x
                       </td>
                       <td style={{
                         padding: '12px',

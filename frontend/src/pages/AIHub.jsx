@@ -724,12 +724,13 @@ function AIHub() {
                 {/* Symbol */}
                 <div>
                   <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '700', color: '#888', marginBottom: '0.5rem' }}>
-                    SYMBOL
+                    SYMBOL (학습할 코인)
                   </label>
                   <input
                     type="text"
                     value={config.symbol}
                     onChange={(e) => setConfig({ ...config, symbol: e.target.value })}
+                    placeholder="예: BTCUSDT, ETHUSDT, SOLUSDT"
                     style={{
                       width: '100%',
                       padding: '0.6rem',
@@ -741,6 +742,9 @@ function AIHub() {
                       outline: 'none'
                     }}
                   />
+                  <span style={{ fontSize: '0.65rem', color: '#666', marginTop: '0.25rem', display: 'block' }}>
+                    💡 모든 코인 학습 가능 (BTC, ETH, SOL, BNB 등)
+                  </span>
                 </div>
 
                 {/* Timeframe */}
@@ -902,6 +906,10 @@ function AIHub() {
                   <br />
                   레버리지 <strong style={{ color: '#00b07c' }}>{config.leverage}x</strong>,{' '}
                   보상 전략: <strong style={{ color: '#00b07c' }}>{config.reward_strategy}</strong>
+                  <br />
+                  <span style={{ color: '#f0b90b', fontSize: '0.75rem' }}>
+                    💾 저장: ppo_{config.symbol}_{config.interval}_YYYYMMDD_HHMM.zip
+                  </span>
                 </div>
               </div>
 
@@ -1429,10 +1437,10 @@ function AIHub() {
                     코어 코인 (항상 포함)
                   </label>
                   <div style={{ fontSize: '0.8rem', color: '#fff' }}>
-                    {coinSelection.config?.core_coins?.join(', ') || 'BTC, ETH'}
+                    {coinSelection.config?.core_coins?.join(', ') || 'BTC, ETH, SOL, BNB'}
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.25rem' }}>
-                    이 코인들은 항상 거래됩니다
+                    코어 코인은 최대 10배, 나머지는 최대 5배 레버리지
                   </div>
                 </div>
 
@@ -1442,7 +1450,7 @@ function AIHub() {
                     최대 자동 알트코인
                   </label>
                   <div style={{ fontSize: '0.8rem', color: '#fff' }}>
-                    {coinSelection.config?.max_altcoins || 5} coins
+                    {coinSelection.config?.max_altcoins || 3} coins
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.25rem' }}>
                     AI가 자동으로 상위 성과 코인 선택
@@ -1584,7 +1592,8 @@ function AIHub() {
                 <div style={{ fontWeight: '800', color: '#00b07c', marginBottom: '0.5rem' }}>
                   💡 하이브리드 모드 작동 방식:
                 </div>
-                코어 코인(BTC, ETH)은 안정성을 제공하며 항상 거래됩니다. AI는 시장 상황에 따라 매시간 최상위 알트코인을 자동으로 선택하여, 
+                코어 코인(BTC, ETH, SOL, BNB)은 안정성을 제공하며 항상 거래됩니다(최대 10배 레버리지). 
+                AI는 시장 상황에 따라 매시간 최상위 알트코인을 자동으로 선택하여(최대 5배 레버리지), 
                 높은 거래량과 적당한 변동성을 가진 기회를 최적화합니다. 이러한 균형 잡힌 접근 방식은 리스크를 관리하면서 수익을 극대화합니다.
               </div>
             </div>
