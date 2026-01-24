@@ -347,11 +347,19 @@ class AutoTradingService:
         """Stop auto trading"""
         self.running = False
         await self.stop_shadow_mode() # Stop shadow too
+        
+        # Cancel specific tasks
         for t in (self._heartbeat_task, self._daily_report_task):
             if t and not t.done():
                 t.cancel()
+                try:
+                    await t
+                except asyncio.CancelledError:
+                    pass
+        
         self._heartbeat_task = None
         self._daily_report_task = None
+        
         logger.info("Auto Trading Stopped")
 
     async def start_shadow_mode(self, model_path: str = None, model_paths: list[str] = None):

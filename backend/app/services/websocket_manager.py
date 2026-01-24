@@ -63,3 +63,14 @@ class WebSocketManager:
         if channel:
             return len(self.active_connections.get(channel, []))
         return sum(len(conns) for conns in self.active_connections.values())
+    
+    async def disconnect_all(self):
+        """Disconnect all WebSocket connections gracefully"""
+        for channel, connections in self.active_connections.items():
+            for websocket in connections[:]:  # Copy list to avoid modification during iteration
+                try:
+                    await websocket.close()
+                except Exception as e:
+                    logger.debug(f"WebSocket close exception on {channel} (safe to ignore): {e}")
+            connections.clear()
+        logger.info("All WebSocket connections closed")

@@ -69,7 +69,27 @@ class PriceStreamService:
     async def stop(self):
         """Stop price streaming"""
         self.running = False
-        # bm does not need closing, it uses the client
+        
+        # Cancel all active stream tasks
+        for symbol, task in self._symbol_streams.items():
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+                except Exception as e:
+                    logger.debug(f"Stream cleanup exception for {symbol}: {e}")
+        
+        self._symbol_streams.clear()
+        
+        # Close socket manager if exists
+        if self.bm:
+            try:
+                await self.bm.close()
+            except Exception as e:
+                logger.debug(f"BinanceSocketManager close exception (safe to ignore): {e}")
+        
         logger.info("Price stream service stopped")
     
     async def _stream_symbol(self, symbol: str):

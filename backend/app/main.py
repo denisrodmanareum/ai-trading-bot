@@ -131,13 +131,23 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     logger.info("Shutting down...")
-    if price_service:
-        await price_service.stop()
+    
+    # Stop services in reverse order
     if auto_trading_service:
         await auto_trading_service.stop()
-        
+    
+    if price_service:
+        await price_service.stop()
+    
+    # Close all WebSocket connections
+    if ws_manager:
+        await ws_manager.disconnect_all()
+    
+    # Close Binance client
     if binance_client:
         await binance_client.close()
+    
+    logger.info("✅ Shutdown complete")
 
 
 # Create app
