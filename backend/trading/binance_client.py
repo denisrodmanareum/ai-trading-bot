@@ -178,23 +178,72 @@ class BinanceClient:
         # Binance Futures uses STOP_MARKET / TAKE_PROFIT_MARKET with stopPrice.
         # closePosition is safer (no qty needed), but some accounts/symbols may reject it.
         # We'll try closePosition=True first, then fallback to reduceOnly+quantity.
+        
+        async def _round_price(sym: str, prc: float):
+            try:
+                info = await self.get_exchange_info()
+                s_info = next((s for s in info['symbols'] if s['symbol'] == sym), None)
+                if not s_info: return round(prc, 2)
+                precision = int(s_info.get('pricePrecision', 2))
+                return round(prc, precision)
+            except:
+                return round(prc, 2)
 
-        async def _create(order_type: str, stop_price: float):
+        async def _create(order_type: str, stop_price: float, side: str):
+            # Round price first
+            stop_price = await _round_price(symbol, stop_price)
+            
+            # --- SAFETY BUFFER ---
+            # To avoid "Order would immediately trigger", ensure stopPrice is on the correct side of current price.
+            try:
+                ticker = await self.client.futures_symbol_ticker(symbol=symbol)
+                current_price = float(ticker['price'])
+                
+                # Minimum buffer (0.1% for safety)
+                buffer = current_price * 0.001 
+                
+                if order_type == "STOP_MARKET":
+                    # For SL:
+                    # BUY (to close SHORT): stopPrice must be > current
+                    # SELL (to close LONG): stopPrice must be < current
+                    if side == "BUY" and stop_price <= current_price:
+                        stop_price = current_price + buffer
+                        logger.info(f"🛡️ Nudged SL BUY price to {stop_price} (Buffer)")
+                    elif side == "SELL" and stop_price >= current_price:
+                        stop_price = current_price - buffer
+                        logger.info(f"🛡️ Nudged SL SELL price to {stop_price} (Buffer)")
+                
+                elif order_type == "TAKE_PROFIT_MARKET":
+                    # For TP:
+                    # BUY (to close SHORT): stopPrice must be < current
+                    # SELL (to close LONG): stopPrice must be > current
+                    if side == "BUY" and stop_price >= current_price:
+                        stop_price = current_price - buffer
+                        logger.info(f"🛡️ Nudged TP BUY price to {stop_price} (Buffer)")
+                    elif side == "SELL" and stop_price <= current_price:
+                        stop_price = current_price + buffer
+                        logger.info(f"🛡️ Nudged TP SELL price to {stop_price} (Buffer)")
+                
+                # Re-round after buffer
+                stop_price = await _round_price(symbol, stop_price)
+            except Exception as e:
+                logger.warning(f"Safety buffer check failed: {e}")
+
             try:
                 return await self.client.futures_create_order(
                     symbol=symbol,
-                    side=close_side,
+                    side=side, # Use side passed to _create
                     type=order_type,
                     stopPrice=stop_price,
                     closePosition=True,
-                    reduceOnly=True,
                     workingType="MARK_PRICE",
                 )
             except Exception as e:
+                # If closePosition fails (e.g. parameter conflict), fallback to reduceOnly+qty
                 logger.warning(f"Bracket {order_type} closePosition failed, fallback qty: {e}")
                 return await self.client.futures_create_order(
                     symbol=symbol,
-                    side=close_side,
+                    side=side,
                     type=order_type,
                     stopPrice=stop_price,
                     quantity=quantity,
@@ -204,14 +253,14 @@ class BinanceClient:
 
         try:
             if stop_loss_price:
-                results["sl"] = await _create("STOP_MARKET", float(stop_loss_price))
+                results["sl"] = await _create("STOP_MARKET", float(stop_loss_price), close_side)
                 logger.info(f"Placed SL ({symbol}) @ {stop_loss_price}")
         except Exception as e:
             logger.error(f"Failed to place SL for {symbol}: {e}")
 
         try:
             if take_profit_price:
-                results["tp"] = await _create("TAKE_PROFIT_MARKET", float(take_profit_price))
+                results["tp"] = await _create("TAKE_PROFIT_MARKET", float(take_profit_price), close_side)
                 logger.info(f"Placed TP ({symbol}) @ {take_profit_price}")
         except Exception as e:
             logger.error(f"Failed to place TP for {symbol}: {e}")

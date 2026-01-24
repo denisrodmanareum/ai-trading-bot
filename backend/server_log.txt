@@ -1,0 +1,22 @@
+2026-01-24 08:58:17.021 | INFO     | app.services.notifications:_load_from_disk:82 - \U0001f514 Notification settings loaded: C:\ai\ai-trading-bot\backend\data\config\notification_settings.json
+INFO:     Started server process [19872]
+INFO:     Waiting for application startup.
+2026-01-24 08:58:17.703 | INFO     | app.main:lifespan:32 - Starting AI Trading Bot...
+2026-01-24 08:58:17.715 | INFO     | app.main:lifespan:37 - Database initialized
+2026-01-24 08:58:17.894 | INFO     | trading.binance_client:initialize:31 - \u2705 Binance Client initialized (Time Offset: 154ms)
+2026-01-24 08:58:17.894 | INFO     | app.main:lifespan:41 - Binance client initialized
+2026-01-24 08:58:17.896 | INFO     | app.main:lifespan:122 - Price Stream, Auto Trading, Scheduler & Reporter Services started
+2026-01-24 08:58:17.896 | INFO     | app.main:start_trading_delayed:52 - Scheduling Auto Trading start in 10 seconds...
+2026-01-24 08:58:17.896 | INFO     | app.services.price_stream:start:38 - Starting price stream service...
+2026-01-24 08:58:17.896 | INFO     | app.services.coin_selector:rebalance:81 - \U0001f504 Rebalancing coin selection...
+2026-01-24 08:58:17.899 | INFO     | app.services.reporter:schedule_daily:179 - Daily Reporter scheduler started.
+2026-01-24 08:58:17.899 | INFO     | app.services.reporter:generate_daily_report:24 - Generating daily report for UTC date 2026-01-23...
+INFO:     Application startup complete.
+ERROR:    [Errno 10048] error while attempting to bind on address ('127.0.0.1', 8000): 각 소켓 주소(프로토콜/네트워크 주소/포트)는 하나만 사용할 수 있습니다
+INFO:     Waiting for application shutdown.
+2026-01-24 08:58:17.904 | INFO     | app.main:lifespan:133 - Shutting down...
+2026-01-24 08:58:17.904 | INFO     | app.services.price_stream:stop:73 - Price stream service stopped
+2026-01-24 08:58:17.904 | INFO     | app.services.auto_trading:stop_shadow_mode:374 - Shadow Mode Stopped
+2026-01-24 08:58:17.904 | INFO     | app.services.auto_trading:stop:335 - Auto Trading Stopped
+INFO:     Application shutdown complete.
+DEBUG: Trading Router Module Loaded

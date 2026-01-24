@@ -16,65 +16,89 @@ class StochasticTradingStrategy:
         """
         Check for rapid price moves (Pump/Dump)
         """
-        latest = df.iloc[-1]
-        prev = df.iloc[-2]
+        try:
+            latest = df.iloc[-1]
+            prev = df.iloc[-2]
+            
+            # 1. Volume Spike (2x average)
+            # 🔧 FIX: Check if volume_sma exists
+            if 'volume_sma' not in df.columns:
+                df['volume_sma'] = df['volume'].rolling(20).mean()
+            
+            vol_spike = latest['volume'] > (latest['volume_sma'] * 2.0)
         
-        # 1. Volume Spike (2x average)
-        vol_spike = latest['volume'] > (latest['volume_sma'] * 2.0)
-        
-        # 2. Acceleration (Price change increasing)
-        # Velocity = P_t - P_t-1
-        # Acceleration = V_t - V_t-1
-        vel_now = latest['close'] - prev['close']
-        vel_prev = prev['close'] - df.iloc[-3]['close']
-        accel = vel_now - vel_prev
-        
-        # 3. ATR Expansion (High volatility)
-        atr_expansion = latest['atr'] > df['atr'].rolling(20).mean().iloc[-1]
-        
-        if vol_spike and atr_expansion:
-            # PUMP (Accelerating Up)
-            if vel_now > 0 and accel > 0:
-                return {
-                    "action": "LONG",
-                    "strength": 3,
-                    "leverage": 5,
-                    "reason": "🚀 Momentum Pump (Vol+Acc)"
-                }
-            # DUMP (Accelerating Down)
-            elif vel_now < 0 and accel < 0:
-                 return {
-                    "action": "SHORT",
-                    "strength": 3,
-                    "leverage": 5,
-                    "reason": "📉 Momentum Dump (Vol+Acc)"
-                }
+            # 2. Acceleration (Price change increasing)
+            # Velocity = P_t - P_t-1
+            # Acceleration = V_t - V_t-1
+            vel_now = latest['close'] - prev['close']
+            vel_prev = prev['close'] - df.iloc[-3]['close']
+            accel = vel_now - vel_prev
+            
+            # 3. ATR Expansion (High volatility)
+            atr_expansion = latest['atr'] > df['atr'].rolling(20).mean().iloc[-1]
+            
+            if vol_spike and atr_expansion:
+                # PUMP (Accelerating Up)
+                if vel_now > 0 and accel > 0:
+                    return {
+                        "action": "LONG",
+                        "strength": 3,
+                        "leverage": 5,
+                        "reason": "🚀 Momentum Pump (Vol+Acc)"
+                    }
+                # DUMP (Accelerating Down)
+                elif vel_now < 0 and accel < 0:
+                     return {
+                        "action": "SHORT",
+                        "strength": 3,
+                        "leverage": 5,
+                        "reason": "📉 Momentum Dump (Vol+Acc)"
+                    }
+        except Exception as e:
+            from loguru import logger
+            logger.debug(f"Momentum check failed: {e}")
         return None
 
     def should_enter(self, df: pd.DataFrame):
         """
         Analyze market data and return signal
         """
+        from loguru import logger
+        
         signal = None
         
-        # 1. Check Momentum First (Highest Priority)
-        mom_signal = self.check_momentum(df)
-        if mom_signal:
-            return mom_signal
+        try:
+            # 🔧 FIX: Validate dataframe has enough data
+            if len(df) < 200:
+                logger.warning(f"⚠️ Not enough data for strategy: {len(df)} candles (need 200+)")
+                return None
             
-        # Calculate Indicators
-        stoch_calc = StochasticTriple(df['high'], df['low'], df['close'])
-        stochs = stoch_calc.calculate()
+            # 1. Check Momentum First (Highest Priority)
+            mom_signal = self.check_momentum(df)
+            if mom_signal:
+                logger.info(f"🚀 Momentum Signal: {mom_signal}")
+                return mom_signal
+                
+            # Calculate Indicators
+            stoch_calc = StochasticTriple(df['high'], df['low'], df['close'])
+            stochs = stoch_calc.calculate()
+            
+            # RSI for filtering
+            rsi_ind = RSIIndicator(close=df['close'], window=14)
+            rsi = rsi_ind.rsi().iloc[-1]
+            
+            # EMA Trend Filter (200 EMA)
+            ema_200_val = df['ema_200'].iloc[-1] if 'ema_200' in df else df['close'].rolling(200).mean().iloc[-1]
+            close = df['close'].iloc[-1]
+            is_uptrend = close > ema_200_val
+            is_downtrend = close < ema_200_val
+            
+            # 🔧 DEBUG: Log key indicators
+            logger.debug(f"📊 Indicators - RSI: {rsi:.1f}, Close: {close:.2f}, EMA200: {ema_200_val:.2f}, Trend: {'UP' if is_uptrend else 'DOWN'}")
         
-        # RSI for filtering
-        rsi_ind = RSIIndicator(close=df['close'], window=14)
-        rsi = rsi_ind.rsi().iloc[-1]
-        
-        # EMA Trend Filter (200 EMA)
-        ema_200_val = df['ema_200'].iloc[-1] if 'ema_200' in df else df['close'].rolling(200).mean().iloc[-1]
-        close = df['close'].iloc[-1]
-        is_uptrend = close > ema_200_val
-        is_downtrend = close < ema_200_val
+        except Exception as e:
+            logger.error(f"❌ Strategy calculation failed: {e}")
+            return None
         
         # MEAN REVERSION: Allow counter-trend if RSI is extreme
         force_reversal_buy = rsi < 30
@@ -84,6 +108,9 @@ class StochasticTradingStrategy:
         fast_d = stochs['fast']['d'].iloc[-1]
         mid_k = stochs['mid']['k'].iloc[-1]
         slow_k = stochs['slow']['k'].iloc[-1]
+        
+        # 🔧 DEBUG: Log stochastic values
+        logger.debug(f"📈 Stoch - Fast K: {fast_k:.1f}, Mid K: {mid_k:.1f}, Slow K: {slow_k:.1f}")
         
         # --- TREND PULLBACK LOGIC (High Quality) ---
         # 1. Bullish Pullback (Buy the dip in Uptrend)
@@ -219,4 +246,10 @@ class StochasticTradingStrategy:
                          "reason": "Stoch Dead Cross at Top"
                      }
 
+        # 🔧 DEBUG: Log if no signal generated
+        if signal is None:
+            logger.debug(f"⏸️ No signal - RSI: {rsi:.1f}, Fast: {fast_k:.1f}, Mid: {mid_k:.1f}, Slow: {slow_k:.1f}, Trend: {'UP' if is_uptrend else 'DOWN'}")
+        else:
+            logger.info(f"✅ Signal Generated: {signal}")
+        
         return signal

@@ -41,9 +41,10 @@ class CoinSelector:
             }
         }
         
-        self.selected_coins = []
+        # Initialize with fallback coins (important for first run)
+        self.selected_coins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT']
         self.last_rebalance = None
-        self.coin_scores = {}
+        self.coin_scores = {s: 80.0 for s in self.selected_coins}
     
     async def get_selected_coins(self) -> List[str]:
         """
@@ -113,7 +114,8 @@ class CoinSelector:
     async def _get_binance_futures_symbols(self) -> List[str]:
         """Get all USDT futures symbols from Binance"""
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 url = f"{self.binance_base}/exchangeInfo"
                 async with session.get(url) as response:
                     if response.status == 200:
@@ -132,7 +134,8 @@ class CoinSelector:
     async def _get_coingecko_market_data(self) -> List[Dict]:
         """Get market data from CoinGecko"""
         try:
-            async with aiohttp.ClientSession() as session:
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 url = f"{self.coingecko_base}/coins/markets"
                 params = {
                     'vs_currency': 'usd',

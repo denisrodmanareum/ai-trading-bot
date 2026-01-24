@@ -155,7 +155,7 @@ class AutoTradingService:
         # Risk Management
         self.risk_config = RiskConfig()
         self.strategy_config = StrategyConfig() # New Config
-        self.allowed_symbols = ["BTCUSDT"] # Safety: Only trade supported/trained symbols
+        # 🔧 REMOVED: allowed_symbols restriction - now using coin_selector dynamically
         self.daily_start_balance = 0.0
         self.current_daily_loss = 0.0
         self.last_margin_level = 0.0
@@ -187,6 +187,9 @@ class AutoTradingService:
         
         # Circuit Breaker
         self.circuit_breaker = CircuitBreaker()
+        
+        # 🔧 FIX: Remove allowed_symbols restriction - use coin_selector instead
+        # This was blocking all trading signals!
         
     async def initialize(self):
         """Initialize AI agent"""
@@ -382,11 +385,10 @@ class AutoTradingService:
         if not self.running or self.processing:
             return
 
-        # Check whether symbol is allowed for auto trading
-        if data.get('symbol') not in self.allowed_symbols:
-            # logger.debug(f"Skipping auto-trade for {data.get('symbol')}: Not in allowed list")
-            return
-
+        # 🔧 FIX: Check coin_selector instead of hard-coded allowed_symbols
+        # This allows dynamic coin selection
+        symbol = data.get('symbol')
+        
         # --- HEARTBEAT LOG ---
         # Log every 60 seconds to show user the bot is alive and detailed status
         now = time.time()
@@ -394,13 +396,21 @@ class AutoTradingService:
             self.last_heartbeat_ts = now
             price = float(data.get('close', 0))
             
-            # Try to get recent indicators if available from state or calculate rough ones
-            # Since we haven't calculated indicators yet in this flow (it happens below), 
-            # we will defer rich logging to _trade_logic OR move this check inside _trade_logic.
-            # However, _trade_logic is only called if risk checks pass. 
-            # Let's keep a simple heartbeat here and a RICH heartbeat inside _trade_logic.
-            logger.info(f"👀 Scanning Market... {data.get('symbol')} @ ${price:.2f}")
+            # 🔧 Enhanced logging
+            selected = await coin_selector.get_selected_coins()
+            logger.info(f"👀 Scanning Market... {symbol} @ ${price:.2f} | Selected coins: {len(selected)} ({', '.join(selected)}) | Running: {self.running}")
         # ---------------------
+        
+        selected_coins = await coin_selector.get_selected_coins()
+        if symbol not in selected_coins:
+            # Only log every 60s if not selected to avoid spam
+            if now - self.last_heartbeat_ts > 60:
+                logger.debug(f"⏭️ Skipping {symbol} (not in selected: {selected_coins})")
+            return
+        
+        # Log when we actually get data for a selected coin
+        if now - self.last_heartbeat_ts > 60:
+            logger.debug(f"📥 Received data for {symbol} (is_closed: {data.get('is_closed')})")
 
         # Check interval (avoid duplicate processing for same candle)
         # Assuming data comes every minute or tick
@@ -436,11 +446,8 @@ class AutoTradingService:
         """Core trading logic"""
         symbol = data['symbol']
         
-        # 0. Check if coin is in selected list (Hybrid mode)
-        selected_coins = await coin_selector.get_selected_coins()
-        if symbol not in selected_coins:
-            # Skip if not in selected coins
-            return
+        # 🔧 Note: Symbol already checked in process_market_data, no need to check again
+        # This was causing double-filtering
         
         # 1. Get current position
         position = await self.binance_client.get_position(symbol)
@@ -483,8 +490,13 @@ class AutoTradingService:
         # (This adds latency but ensures indicators are correct)
         # 1. Fetch data based on selected interval (For Strategy & AI)
         trading_interval = self.strategy_config.selected_interval
-        logger.info(f"Trading Mode: {self.strategy_config.mode} | Interval: {trading_interval}")
-        df = await self.binance_client.get_klines(symbol, interval=trading_interval, limit=100)
+        logger.info(f"🔄 Trading Mode: {self.strategy_config.mode} | Interval: {trading_interval} | Symbol: {symbol}")
+        df = await self.binance_client.get_klines(symbol, interval=trading_interval, limit=300)
+        
+        # 🔧 Validate data
+        if df is None or len(df) < 50:
+            logger.warning(f"⚠️ Insufficient data for {symbol}: {len(df) if df is not None else 0} candles")
+            return
         from ai.features import add_technical_indicators
         df = add_technical_indicators(df)
         
@@ -567,7 +579,13 @@ class AutoTradingService:
         ai_action_name = ["HOLD", "LONG", "SHORT", "CLOSE"][ai_action]
         
         # 5. Tech Signal (Rules are the CAPTAIN)
+        logger.info(f"🔍 Checking technical signals for {symbol}...")
         tech_signal = self.stoch_strategy.should_enter(df)
+        
+        if tech_signal:
+            logger.info(f"✅ Tech Signal Found: {tech_signal['action']} | Strength: {tech_signal['strength']} | Reason: {tech_signal['reason']}")
+        else:
+            logger.debug(f"⏸️ No tech signal for {symbol}")
         
         # --- STRATEGY MODE FILTER + MARKET REGIME (ENHANCED) ---
         # Apply regime-based filtering
@@ -680,7 +698,7 @@ class AutoTradingService:
                 reason = "No_Signal"
         
         final_action_str = ["HOLD", "LONG", "SHORT", "CLOSE"][final_action]
-        logger.info(f"AI: {ai_action_name} | Rule: {tech_signal['action'] if tech_signal else 'None'} -> Final: {final_action_str} ({reason})")
+        logger.info(f"🎯 DECISION {symbol} - AI: {ai_action_name} | Rule: {tech_signal['action'] if tech_signal else 'None'} -> Final: {final_action_str} ({reason})")
         
         # 5. Execute Order (Main)
         await self._execute_order(
@@ -730,6 +748,28 @@ class AutoTradingService:
         """Execute order based on action"""
         current_amt = position['position_amt']
         
+        async def _round_quantity(sym: str, qty: float):
+            try:
+                # 1. Fetch exchange info for precision
+                info = await self.binance_client.get_exchange_info()
+                if not info or 'symbols' not in info:
+                    return round(qty, 3) # Hand-wave fallback
+                
+                # 2. Find symbol
+                s_info = next((s for s in info['symbols'] if s['symbol'] == sym), None)
+                if not s_info:
+                    return round(qty, 3)
+                
+                # 3. Get precision (quantityPrecision)
+                precision = int(s_info.get('quantityPrecision', 3))
+                
+                # 4. Standard Round Down
+                import math
+                factor = 10 ** precision
+                return math.floor(qty * factor) / factor
+            except:
+                return round(qty, 3)
+
         # Quantity logic
         # 1. Calculate Target Notional Value
         if self.risk_config.position_mode == "RATIO":
@@ -753,8 +793,7 @@ class AutoTradingService:
         quantity = max(0.002, min_qty) # Ensure at least 0.002 BTC
         quantity = round(quantity, 3) # Specific for BTC (3 decimal places)
 
-        if symbol != "BTCUSDT":
-            quantity = 1 # Logic for other coins needed
+        quantity = await _round_quantity(symbol, quantity)
             
         try:
             if action == 1: # LONG

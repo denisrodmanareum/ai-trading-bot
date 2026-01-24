@@ -19,8 +19,10 @@ class PriceStreamService:
         self.ws_manager = ws_manager
         self.bm: Optional[BinanceSocketManager] = None
         self.running = False
-        self.symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]  # Expanded for multi-coin support
+        # 🔧 FIX: Expanded default symbols for better coverage
+        self.symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "ADAUSDT", "DOGEUSDT"]
         self.callbacks = []
+        self._symbol_streams = {}  # Track active streams
         
     def add_callback(self, callback):
         """Add callback for price updates"""
@@ -39,11 +41,26 @@ class PriceStreamService:
             # Create Binance Socket Manager
             self.bm = BinanceSocketManager(self.binance_client.client)
             
+            # 🔧 FIX: Get initial symbols from coin_selector
+            from app.services.coin_selector import coin_selector
+            try:
+                selected = await coin_selector.get_selected_coins()
+                if selected:
+                    # Use selected coins, but keep our defaults as fallback
+                    self.symbols = list(set(self.symbols + selected))
+                    logger.info(f"📊 Using coin selector: {selected}")
+            except Exception as e:
+                logger.warning(f"Failed to get coin selector list, using defaults: {e}")
+            
             # Start streams for each symbol
             for symbol in self.symbols:
-                asyncio.create_task(self._stream_symbol(symbol))
+                task = asyncio.create_task(self._stream_symbol(symbol))
+                self._symbol_streams[symbol] = task
             
-            logger.info(f"Price streams started for {self.symbols}")
+            # 🔧 FALLBACK: Start polling loop as backup
+            asyncio.create_task(self._polling_loop())
+            
+            logger.info(f"✅ Price streams started for {len(self.symbols)} symbols: {self.symbols}")
             
         except Exception as e:
             logger.error(f"Failed to start price stream: {e}")
@@ -60,14 +77,23 @@ class PriceStreamService:
         logger.info(f"Starting stream for {symbol}")
         
         # Kline (candlestick) stream
-        async with self.bm.kline_socket(symbol, interval='1m') as stream:
-            while self.running:
-                try:
-                    msg = await stream.recv()
-                    await self._process_kline(msg)
-                except Exception as e:
-                    logger.error(f"Stream error for {symbol}: {e}")
-                    await asyncio.sleep(5)  # Wait before reconnecting
+        try:
+            async with self.bm.kline_socket(symbol, interval='1m') as stream:
+                logger.info(f"📡 WebSocket connected for {symbol}")
+                while self.running:
+                    try:
+                        # Wait for message with timeout
+                        msg = await asyncio.wait_for(stream.recv(), timeout=30)
+                        await self._process_kline(msg)
+                    except asyncio.TimeoutError:
+                        logger.debug(f"WebSocket silent for {symbol} (using polling fallback)")
+                        # No need to reconnect yet, just let it loop and try recv again
+                        # The polling fallback will cover this period
+                    except Exception as e:
+                        logger.error(f"Stream error for {symbol}: {e}")
+                        await asyncio.sleep(5)  # Wait before reconnecting
+        except Exception as e:
+            logger.error(f"Failed to open kline socket for {symbol}: {e}")
     
     async def _process_kline(self, msg: dict):
         """Process kline data and broadcast"""
@@ -94,6 +120,7 @@ class PriceStreamService:
                     asyncio.create_task(self._save_candle_to_db(kline))
 
                 # Notify internal callbacks
+                # logger.debug(f"Processing kline for {data['symbol']} (closed: {data['is_closed']})")
                 for callback in self.callbacks:
                     try:
                         if asyncio.iscoroutinefunction(callback):
@@ -134,6 +161,48 @@ class PriceStreamService:
         except Exception as e:
             logger.error(f"Failed to save candle to DB: {e}")
     
+    async def _polling_loop(self):
+        """Fallback polling loop if WebSocket is silent"""
+        logger.info("📡 Starting fallback polling loop (every 10s)")
+        while self.running:
+            try:
+                # Poll all active symbols as fallback
+                current_symbols = list(self.symbols) 
+                for symbol in current_symbols:
+                    if not self.running: break
+                    
+                    # Fetch latest 1m kline manually
+                    try:
+                        klines = await self.binance_client.client.futures_klines(symbol=symbol, interval='1m', limit=2)
+                        if klines:
+                            k = klines[-1]
+                            data = {
+                                "type": "kline",
+                                "symbol": symbol,
+                                "timestamp": k[0],
+                                "open": float(k[1]),
+                                "high": float(k[2]),
+                                "low": float(k[3]),
+                                "close": float(k[4]),
+                                "volume": float(k[5]),
+                                "is_closed": True
+                            }
+                            
+                            for callback in self.callbacks:
+                                try:
+                                    if asyncio.iscoroutinefunction(callback):
+                                        await callback(data)
+                                    else:
+                                        callback(data)
+                                except: pass
+                    except Exception as e:
+                        logger.debug(f"Polling failed for {symbol}: {e}")
+
+                await asyncio.sleep(10)
+            except Exception as e:
+                logger.error(f"Polling loop error: {e}")
+                await asyncio.sleep(10)
+
     async def add_symbol(self, symbol: str):
         """Add new symbol to stream"""
         if symbol not in self.symbols:
