@@ -470,7 +470,6 @@ function TradingPerfect() {
                 <tbody>
                   {activeBottomTab === 'positions' && positions.map((p, i) => {
                     const sizeUSDT = Math.abs(p.position_amt) * (p.entry_price || 0);
-                    const posMarkPrice = prices[p.symbol] || 0; // 각 포지션의 심볼별 가격
                     return (
                       <tr key={i} style={{ borderBottom: '1px solid #111' }}>
                         <td style={{ padding: '10px 14px' }}>
@@ -482,7 +481,7 @@ function TradingPerfect() {
                           <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '2px' }}>${sizeUSDT.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                         </td>
                         <td style={{ padding: '10px', color: '#888' }}>{p.entry_price?.toLocaleString()}</td>
-                        <td style={{ padding: '10px', color: '#888' }}>{posMarkPrice ? posMarkPrice.toLocaleString() : '-'}</td>
+                        <td style={{ padding: '10px', color: '#888' }}>{p.mark_price > 0 ? p.mark_price.toLocaleString() : '-'}</td>
                         <td style={{ padding: '10px', color: '#f0b90b', fontWeight: '700' }}>{p.leverage || leverage || 10}x</td>
                         <td style={{ padding: '10px', color: p.unrealized_pnl >= 0 ? '#00b07c' : '#ff4b4b', fontWeight: '700' }}>
                           {p.unrealized_pnl?.toFixed(2)} ({((p.unrealized_pnl / (Math.abs(p.position_amt) * p.entry_price / (p.leverage || leverage || 10))) * 100).toFixed(2)}%)

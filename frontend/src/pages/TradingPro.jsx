@@ -594,7 +594,6 @@ function TradingPro() {
                   const isLong = pos.position_amt > 0;
                   const pnlColor = pos.unrealized_pnl >= 0 ? '#00b07c' : '#ff4b4b';
                   const sizeUSDT = Math.abs(pos.position_amt) * (pos.entry_price || 0);
-                  const posMarkPrice = prices[pos.symbol] || 0; // 각 포지션의 심볼별 가격
                   return (
                     <tr
                       key={idx}
@@ -620,7 +619,7 @@ function TradingPro() {
                         {pos.entry_price?.toLocaleString()}
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#ccc' }}>
-                        {posMarkPrice ? posMarkPrice.toLocaleString() : '-'}
+                        {pos.mark_price > 0 ? pos.mark_price.toLocaleString() : '-'}
                       </td>
                       <td style={{ padding: '12px', textAlign: 'right', fontFamily: 'monospace', color: '#f0b90b', fontWeight: '700' }}>
                         {pos.leverage || leverage || 10}x

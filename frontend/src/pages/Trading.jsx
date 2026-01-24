@@ -643,7 +643,7 @@ function Trading() {
                           <div style={{ fontSize: '0.65rem', color: '#666', marginTop: '2px' }}>${sizeUSDT.toLocaleString(undefined, { maximumFractionDigits: 2 })}</div>
                         </td>
                         <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: '#bbb' }}>{pos.entry_price?.toLocaleString()}</td>
-                        <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: '#bbb' }}>{data?.prices?.[pos.symbol]?.toLocaleString()}</td>
+                        <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: '#bbb' }}>{pos.mark_price?.toLocaleString()}</td>
                         <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: '#f0b90b', fontWeight: '800' }}>{pos.leverage || 5}x</td>
                         <td style={{ padding: '0.75rem', fontFamily: 'var(--font-mono)', color: pos.unrealized_pnl >= 0 ? '#00b07c' : '#ff5b5b', fontWeight: '900' }}>
                           {pos.unrealized_pnl >= 0 ? '+' : ''}{pos.unrealized_pnl.toFixed(2)} ({((pos.unrealized_pnl / (pos.entry_price * Math.abs(pos.position_amt) / (pos.leverage || strategy.manual_leverage || 5))) * 100).toFixed(2)}%)

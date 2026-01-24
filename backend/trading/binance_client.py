@@ -128,9 +128,11 @@ class BinanceClient:
             raise
     
     async def get_all_positions(self):
-        """Get all positions"""
+        """Get all positions with mark prices"""
         positions = await self.client.futures_position_information()
         active = []
+        
+        # Collect active positions
         for pos in positions:
             amt = float(pos['positionAmt'])
             if amt != 0:
@@ -139,8 +141,23 @@ class BinanceClient:
                     "position_amt": amt,
                     "entry_price": float(pos['entryPrice']),
                     "unrealized_pnl": float(pos['unRealizedProfit']),
-                    "leverage": int(pos.get('leverage', 5))
+                    "leverage": int(pos.get('leverage', 5)),
+                    "mark_price": 0.0  # Will be filled below
                 })
+        
+        # Fetch mark prices for all active symbols
+        if active:
+            try:
+                # Get all mark prices at once
+                all_mark_prices = await self.client.futures_mark_price()
+                mark_price_map = {item['symbol']: float(item['markPrice']) for item in all_mark_prices}
+                
+                # Update mark prices for active positions
+                for pos in active:
+                    pos['mark_price'] = mark_price_map.get(pos['symbol'], 0.0)
+            except Exception as e:
+                logger.warning(f"Failed to fetch mark prices: {e}")
+        
         return active
     
     async def place_market_order(self, symbol, side, quantity, reduce_only=False):
