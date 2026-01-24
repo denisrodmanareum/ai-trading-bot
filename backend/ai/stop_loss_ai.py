@@ -260,7 +260,7 @@ class StopLossTakeProfitAI:
             base_sl_distance = atr * 2.0
             sl_price = entry_price - base_sl_distance
             return {
-                'sl_price': round(sl_price, 2),
+                'sl_price': float(sl_price),
                 'sl_distance': 2.0,
                 'method': 'atr_fallback'
             }
@@ -290,7 +290,7 @@ class StopLossTakeProfitAI:
         sl_price = entry_price - sl_distance
         
         return {
-            'sl_price': round(sl_price, 2),
+            'sl_price': float(sl_price),
             'sl_distance': round(sl_multiplier, 2),
             'method': 'ai_model'
         }
@@ -320,7 +320,7 @@ class StopLossTakeProfitAI:
             base_tp_distance = atr * 3.0
             tp_price = entry_price + base_tp_distance
             return {
-                'tp_price': round(tp_price, 2),
+                'tp_price': float(tp_price),
                 'tp_distance': 3.0,
                 'method': 'atr_fallback'
             }
@@ -350,7 +350,7 @@ class StopLossTakeProfitAI:
         tp_price = entry_price + tp_distance
         
         return {
-            'tp_price': round(tp_price, 2),
+            'tp_price': float(tp_price),
             'tp_distance': round(tp_multiplier, 2),
             'method': 'ai_model'
         }
@@ -388,7 +388,8 @@ class StopLossTakeProfitAI:
         """
         entry_price = position['entry_price']
         current_price = current_market_data['close']
-        atr = current_market_data.get('atr', current_price * 0.02)
+        # ATR with safety fallback
+        atr = current_market_data.get('atr') or (current_price * 0.02)
         
         # Position duration (would need to track this)
         position_duration = 10  # Placeholder

@@ -987,6 +987,9 @@ class AutoTradingService:
 
     def _fmt_usdt(self, x: float) -> str:
         try:
+            if x < 0.1: return f"{x:.5f}" # Very cheap
+            if x < 1: return f"{x:.4f}" # Cheap
+            if x < 10: return f"{x:.3f}" # Mid
             return f"{x:,.2f}"
         except Exception:
             return str(x)
