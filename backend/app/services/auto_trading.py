@@ -19,6 +19,7 @@ from ai.market_regime import MarketRegimeDetector
 from ai.position_sizer import PositionSizer
 from ai.stop_loss_ai import StopLossTakeProfitAI
 from ai.multi_timeframe import MultiTimeframeAnalyzer
+from ai.smart_money_concept import SmartMoneyConceptAnalyzer
 from app.services.coin_selector import coin_selector
 import os
 import pandas as pd
@@ -64,12 +65,13 @@ class StrategyConfig:
     SCALP_INTERVALS = ["15m", "30m"]
     SWING_INTERVALS = ["1h", "4h", "1d"]
     
-    def __init__(self, mode="SCALP", leverage_mode="AUTO", manual_leverage=5, autonomy_mode="AGGRESSIVE", selected_interval="15m"):
+    def __init__(self, mode="SCALP", leverage_mode="AUTO", manual_leverage=5, autonomy_mode="AGGRESSIVE", selected_interval="15m", use_smc=False):
         self.mode = mode  # "SCALP" or "SWING"
         self.leverage_mode = leverage_mode  # "AUTO" or "MANUAL"
         self.manual_leverage = manual_leverage
         self.autonomy_mode = autonomy_mode  # "CONSERVATIVE" or "AGGRESSIVE"
         self.selected_interval = selected_interval  # Active trading interval
+        self.use_smc = use_smc  # Smart Money Concept 전략 사용 여부
     
     def get_available_intervals(self):
         """Get available intervals for current mode"""
@@ -189,6 +191,7 @@ class AutoTradingService:
         self.position_sizer = PositionSizer()
         self.sl_tp_ai = StopLossTakeProfitAI()
         self.mtf_analyzer = MultiTimeframeAnalyzer(binance_client)
+        self.smc_analyzer = SmartMoneyConceptAnalyzer()
         
         # Shadow Mode (A/B Testing)
         self.shadow_agent: Optional[TradingAgent] = None
@@ -499,6 +502,19 @@ class AutoTradingService:
                 await self._check_and_update_trailing_tp(symbol, current_price)
         except Exception as e:
             logger.error(f"트레일링 익절 체크 실패 {symbol}: {e}")
+        
+        # 🎯 SMC (Smart Money Concept) 전략 체크
+        if self.strategy_config.use_smc:
+            try:
+                smc_signal = await self._check_smc_strategy(symbol, position)
+                if smc_signal and smc_signal.get('action') != 0:
+                    logger.info(f"🎯 SMC 신호 발견: {smc_signal}")
+                    # SMC 신호를 바로 실행
+                    await self._execute_smc_order(symbol, smc_signal, position)
+                    return  # SMC 신호 처리 후 기존 로직 스킵
+            except Exception as e:
+                logger.error(f"SMC 전략 실행 실패 {symbol}: {e}")
+        
         # Need to construct the state dictionary expected by agent
         market_state = {
             'close': data['close'],
@@ -1027,6 +1043,260 @@ class AutoTradingService:
         if symbol.endswith("USDT") and len(symbol) > 4:
             return f"{symbol[:-4]}/USDT"
         return symbol
+    
+    async def _check_smc_strategy(self, symbol: str, position: Dict) -> Optional[Dict]:
+        """
+        SMC (Smart Money Concept) 전략 체크
+        
+        Returns:
+            {
+                'action': int,  # 0=HOLD, 1=LONG, 2=SHORT, 3=CLOSE
+                'entry_price': float,
+                'stop_loss': float,
+                'take_profit': float,
+                'confidence': float,
+                'reason': str
+            } or None
+        """
+        try:
+            # 1. 고TF 데이터 (1h 또는 4h)
+            high_tf = '1h' if self.strategy_config.mode == 'SCALP' else '4h'
+            df_high = await self.binance_client.get_klines(symbol, interval=high_tf, limit=300)
+            if df_high is None or len(df_high) < 100:
+                logger.warning(f"SMC: 고TF 데이터 부족 ({high_tf})")
+                return None
+            
+            from ai.features import add_technical_indicators
+            df_high = add_technical_indicators(df_high)
+            
+            # 2. 하위TF 데이터 (15m 또는 5m)
+            low_tf = '15m' if self.strategy_config.mode == 'SCALP' else '30m'
+            df_low = await self.binance_client.get_klines(symbol, interval=low_tf, limit=200)
+            if df_low is None or len(df_low) < 50:
+                logger.warning(f"SMC: 하위TF 데이터 부족 ({low_tf})")
+                return None
+            
+            df_low = add_technical_indicators(df_low)
+            
+            # 3. SMC 분석
+            smc_result = self.smc_analyzer.analyze(df_high, df_low)
+            
+            # 4. 진입 신호 확인
+            entry_signal = smc_result.get('entry_signal')
+            if not entry_signal:
+                return None
+            
+            # 5. 포지션 상태 확인
+            current_amt = float(position.get('position_amt', 0))
+            
+            # 이미 같은 방향 포지션이 있으면 스킵
+            if entry_signal['action'] == 1 and current_amt > 0:
+                logger.debug(f"SMC: 이미 LONG 포지션 보유 중")
+                return None
+            elif entry_signal['action'] == 2 and current_amt < 0:
+                logger.debug(f"SMC: 이미 SHORT 포지션 보유 중")
+                return None
+            
+            # 6. 시장 구조와 일치하는지 확인
+            market_structure = smc_result.get('market_structure', {})
+            trend = market_structure.get('trend', 'UNKNOWN')
+            
+            # LONG 신호는 UP 트렌드에서만, SHORT 신호는 DOWN 트렌드에서만
+            if entry_signal['action'] == 1 and trend != 'UP':
+                logger.warning(f"SMC: LONG 신호이지만 트렌드가 {trend}")
+                return None
+            elif entry_signal['action'] == 2 and trend != 'DOWN':
+                logger.warning(f"SMC: SHORT 신호이지만 트렌드가 {trend}")
+                return None
+            
+            # 7. 신뢰도 체크
+            if entry_signal['confidence'] < 0.6:
+                logger.warning(f"SMC: 신뢰도 낮음 ({entry_signal['confidence']:.2f})")
+                return None
+            
+            logger.info(
+                f"✅ SMC 신호 발견: {['HOLD', 'LONG', 'SHORT'][entry_signal['action']]} | "
+                f"신뢰도: {entry_signal['confidence']:.2f} | "
+                f"트렌드: {trend} | "
+                f"사유: {entry_signal['reason']}"
+            )
+            
+            return entry_signal
+            
+        except Exception as e:
+            logger.error(f"SMC 전략 체크 실패: {e}")
+            return None
+    
+    async def _execute_smc_order(self, symbol: str, smc_signal: Dict, position: Dict):
+        """SMC 신호 기반 주문 실행"""
+        try:
+            action = smc_signal['action']
+            entry_price = smc_signal['entry_price']
+            stop_loss = smc_signal['stop_loss']
+            take_profit = smc_signal['take_profit']
+            reason = smc_signal['reason']
+            
+            current_amt = float(position.get('position_amt', 0))
+            
+            # 수량 계산
+            async def _round_quantity(sym: str, qty: float):
+                try:
+                    info = await self.binance_client.get_exchange_info()
+                    if not info or 'symbols' not in info:
+                        return round(qty, 3)
+                    
+                    s_info = next((s for s in info['symbols'] if s['symbol'] == sym), None)
+                    if not s_info:
+                        return round(qty, 3)
+                    
+                    precision = int(s_info.get('quantityPrecision', 3))
+                    
+                    import math
+                    factor = 10 ** precision
+                    return math.floor(qty * factor) / factor
+                except:
+                    return round(qty, 3)
+            
+            # 목표 금액
+            if self.risk_config.position_mode == "RATIO":
+                try:
+                    account = await self.binance_client.get_account_info()
+                    current_balance = account['balance']
+                    target_notional = current_balance * self.risk_config.position_ratio
+                except:
+                    target_notional = 150.0
+            else:
+                target_notional = 150.0
+            
+            safe_notional = max(target_notional, 120.0)
+            min_qty = safe_notional / entry_price
+            quantity = max(0.002, min_qty)
+            quantity = await _round_quantity(symbol, quantity)
+            
+            # 레버리지 설정
+            leverage = self.strategy_config.manual_leverage if self.strategy_config.leverage_mode == "MANUAL" else 5
+            
+            try:
+                current_leverage = position.get('leverage', 5)
+                position_size = abs(float(position.get('positionAmt', 0)))
+                
+                if current_leverage != leverage and position_size == 0:
+                    result = await self.binance_client.change_leverage(symbol, leverage)
+                    if result is not None:
+                        logger.info(f"✓ 레버리지 변경: {current_leverage} -> {leverage}")
+                    else:
+                        leverage = current_leverage
+                elif current_leverage != leverage and position_size > 0:
+                    leverage = current_leverage
+            except Exception as e:
+                logger.debug(f"레버리지 변경 오류 ({e}), 기존 레버리지 사용: {leverage}")
+            
+            # 주문 실행
+            if action == 1:  # LONG
+                if current_amt < 0:  # SHORT 포지션 청산
+                    close_order = await self.binance_client.place_market_order(symbol, "BUY", abs(current_amt), reduce_only=True)
+                    await self._handle_close_notification(
+                        symbol=symbol,
+                        position=position,
+                        close_order=close_order,
+                        fallback_price=entry_price,
+                        reason=f"SMC_FLIP_TO_LONG",
+                    )
+                
+                # LONG 진입
+                order = await self.binance_client.place_market_order(symbol, "BUY", quantity)
+                logger.info(f"🎯 SMC LONG 진입: {symbol} @ {entry_price:.2f}")
+                await self._broadcast_trade("LONG", symbol, quantity, order)
+                
+                # TP/SL 설정 (SMC 신호 사용)
+                try:
+                    res = await self.binance_client.place_bracket_orders(
+                        symbol=symbol,
+                        position_side="LONG",
+                        quantity=float(quantity),
+                        stop_loss_price=stop_loss,
+                        take_profit_price=take_profit,
+                    )
+                    
+                    actual_entry = float(order.get("avgPrice", 0) or order.get("price", 0) or entry_price)
+                    
+                    self.brackets[symbol] = {
+                        "symbol": symbol,
+                        "side": "LONG",
+                        "qty": float(quantity),
+                        "leverage": int(leverage),
+                        "entry_price": actual_entry,
+                        "tp": float(take_profit),
+                        "sl": float(stop_loss),
+                        "tp_order_id": (res.get("tp") or {}).get("orderId") if res.get("tp") else None,
+                        "sl_order_id": (res.get("sl") or {}).get("orderId") if res.get("sl") else None,
+                        "entry_ts": time.time(),
+                        "entry_reason": reason,
+                        "high_water_mark": actual_entry,
+                        "low_water_mark": None,
+                        "trailing_active": False,
+                        "initial_tp": float(take_profit),
+                        "initial_sl": float(stop_loss),
+                    }
+                    
+                    logger.info(f"✅ SMC LONG 브래킷 설정: TP={take_profit:.2f}, SL={stop_loss:.2f}")
+                except Exception as e:
+                    logger.error(f"SMC 브래킷 주문 실패: {e}")
+            
+            elif action == 2:  # SHORT
+                if current_amt > 0:  # LONG 포지션 청산
+                    close_order = await self.binance_client.place_market_order(symbol, "SELL", abs(current_amt), reduce_only=True)
+                    await self._handle_close_notification(
+                        symbol=symbol,
+                        position=position,
+                        close_order=close_order,
+                        fallback_price=entry_price,
+                        reason=f"SMC_FLIP_TO_SHORT",
+                    )
+                
+                # SHORT 진입
+                order = await self.binance_client.place_market_order(symbol, "SELL", quantity)
+                logger.info(f"🎯 SMC SHORT 진입: {symbol} @ {entry_price:.2f}")
+                await self._broadcast_trade("SHORT", symbol, quantity, order)
+                
+                # TP/SL 설정
+                try:
+                    res = await self.binance_client.place_bracket_orders(
+                        symbol=symbol,
+                        position_side="SHORT",
+                        quantity=float(quantity),
+                        stop_loss_price=stop_loss,
+                        take_profit_price=take_profit,
+                    )
+                    
+                    actual_entry = float(order.get("avgPrice", 0) or order.get("price", 0) or entry_price)
+                    
+                    self.brackets[symbol] = {
+                        "symbol": symbol,
+                        "side": "SHORT",
+                        "qty": float(quantity),
+                        "leverage": int(leverage),
+                        "entry_price": actual_entry,
+                        "tp": float(take_profit),
+                        "sl": float(stop_loss),
+                        "tp_order_id": (res.get("tp") or {}).get("orderId") if res.get("tp") else None,
+                        "sl_order_id": (res.get("sl") or {}).get("orderId") if res.get("sl") else None,
+                        "entry_ts": time.time(),
+                        "entry_reason": reason,
+                        "high_water_mark": None,
+                        "low_water_mark": actual_entry,
+                        "trailing_active": False,
+                        "initial_tp": float(take_profit),
+                        "initial_sl": float(stop_loss),
+                    }
+                    
+                    logger.info(f"✅ SMC SHORT 브래킷 설정: TP={take_profit:.2f}, SL={stop_loss:.2f}")
+                except Exception as e:
+                    logger.error(f"SMC 브래킷 주문 실패: {e}")
+            
+        except Exception as e:
+            logger.error(f"SMC 주문 실행 실패: {e}")
+            await self._notify_error(f"SMC 주문 실행 실패: {e}", context={"symbol": symbol})
 
     def _fmt_usdt(self, x: float) -> str:
         try:
