@@ -32,6 +32,22 @@ class RiskConfig:
         self.position_mode = position_mode # "FIXED" or "RATIO"
         self.position_ratio = position_ratio # 0.1 = 10% of balance
 
+class TrailingTakeProfitConfig:
+    """Trailing Take Profit Configuration"""
+    def __init__(
+        self, 
+        enabled=True,
+        activation_pct=1.5,  # 1.5% 수익 시 트레일링 활성화
+        distance_pct=1.2,    # 최고점에서 1.2% 하락 시 익절
+        min_hold_minutes=3,  # 최소 3분 보유
+        flip_min_signal_score=4  # FLIP 시 최소 신호 점수 (4점 이상)
+    ):
+        self.enabled = enabled
+        self.activation_pct = activation_pct
+        self.distance_pct = distance_pct
+        self.min_hold_minutes = min_hold_minutes
+        self.flip_min_signal_score = flip_min_signal_score
+
 class StrategyConfig:
     """Strategy Configuration (Manual Overrides)"""
     
@@ -155,6 +171,7 @@ class AutoTradingService:
         # Risk Management
         self.risk_config = RiskConfig()
         self.strategy_config = StrategyConfig() # New Config
+        self.trailing_config = TrailingTakeProfitConfig() # Trailing Take Profit Config
         # 🔧 REMOVED: allowed_symbols restriction - now using coin_selector dynamically
         self.daily_start_balance = 0.0
         self.current_daily_loss = 0.0
@@ -473,6 +490,15 @@ class AutoTradingService:
                 del self.position_open_ts[symbol]
         except Exception:
             pass
+
+        # 🎯 트레일링 익절 체크 (포지션이 있을 때만)
+        try:
+            current_amt = float(position.get("position_amt", 0))
+            if current_amt != 0:
+                current_price = float(data.get("close", 0))
+                await self._check_and_update_trailing_tp(symbol, current_price)
+        except Exception as e:
+            logger.error(f"트레일링 익절 체크 실패 {symbol}: {e}")
         # Need to construct the state dictionary expected by agent
         market_state = {
             'close': data['close'],
@@ -700,6 +726,9 @@ class AutoTradingService:
         final_action_str = ["HOLD", "LONG", "SHORT", "CLOSE"][final_action]
         logger.info(f"🎯 DECISION {symbol} - AI: {ai_action_name} | Rule: {tech_signal['action'] if tech_signal else 'None'} -> Final: {final_action_str} ({reason})")
         
+        # 신호 강도 추출
+        signal_strength = tech_signal.get('strength', 0) if tech_signal else 0
+        
         # 5. Execute Order (Main)
         await self._execute_order(
             symbol=symbol,
@@ -709,7 +738,8 @@ class AutoTradingService:
             atr=float(market_state.get('atr', 0)),
             reason=reason,
             leverage=int(leverage),
-            market_state=market_state
+            market_state=market_state,
+            signal_strength=signal_strength
         )
 
         # 5. Shadow Mode Logic
@@ -744,6 +774,7 @@ class AutoTradingService:
         reason: str = "",
         leverage: int = 5,
         market_state: Optional[Dict] = None,
+        signal_strength: int = 0,
     ):
         """Execute order based on action"""
         current_amt = position['position_amt']
@@ -798,15 +829,21 @@ class AutoTradingService:
         try:
             if action == 1: # LONG
                 if current_amt <= 0: # If short or flat
-                    if current_amt < 0: # Close short first
+                    if current_amt < 0: # Close short first (FLIP)
+                        # 🎯 FLIP 제한 체크
+                        can_flip = await self._can_flip_position(symbol, price, signal_strength)
+                        if not can_flip:
+                            logger.warning(f"⚠️ FLIP 제한: {symbol} SHORT→LONG 전환 불가 (최소 보유 시간 또는 신호 강도 부족)")
+                            return
+                        
                         close_order = await self.binance_client.place_market_order(symbol, "BUY", abs(current_amt), reduce_only=True)
                         await self._handle_close_notification(
-                            symbol=symbol,
-                            position=position,
-                            close_order=close_order,
-                            fallback_price=price,
-                            reason=f"FLIP_TO_LONG|{reason}".strip("|"),
-                        )
+                             symbol=symbol,
+                             position=position,
+                             close_order=close_order,
+                             fallback_price=price,
+                             reason=f"FLIP_TO_LONG|{reason}".strip("|"),
+                         )
                     # Open long
                     order = await self.binance_client.place_market_order(symbol, "BUY", quantity)
                     logger.info("Executed LONG")
@@ -838,9 +875,15 @@ class AutoTradingService:
                     
             elif action == 2: # SHORT
                 if current_amt >= 0: # If long or flat
-                    if current_amt > 0: # Close long first
-                         close_order = await self.binance_client.place_market_order(symbol, "SELL", abs(current_amt), reduce_only=True)
-                         await self._handle_close_notification(
+                    if current_amt > 0: # Close long first (FLIP)
+                        # 🎯 FLIP 제한 체크
+                        can_flip = await self._can_flip_position(symbol, price, signal_strength)
+                        if not can_flip:
+                            logger.warning(f"⚠️ FLIP 제한: {symbol} LONG→SHORT 전환 불가 (최소 보유 시간 또는 신호 강도 부족)")
+                            return
+                        
+                        close_order = await self.binance_client.place_market_order(symbol, "SELL", abs(current_amt), reduce_only=True)
+                        await self._handle_close_notification(
                              symbol=symbol,
                              position=position,
                              close_order=close_order,
@@ -1151,11 +1194,191 @@ class AutoTradingService:
                 "sl_order_id": (res.get("sl") or {}).get("orderId") if res.get("sl") else None,
                 "entry_ts": time.time(),
                 "entry_reason": reason,
+                # Trailing Take Profit fields
+                "high_water_mark": float(entry_price) if side == "LONG" else None,
+                "low_water_mark": float(entry_price) if side == "SHORT" else None,
+                "trailing_active": False,
+                "initial_tp": float(tp_price) if tp_price is not None else None,
+                "initial_sl": float(sl_price) if sl_price is not None else None,
             }
         except Exception as e:
             await self._notify_error(f"Bracket order placement failed: {e}", context={"symbol": symbol})
 
         return entry_price, tp_price, sl_price
+
+    async def _can_flip_position(self, symbol: str, current_price: float, signal_strength: int) -> bool:
+        """
+        포지션 FLIP(방향 전환) 가능 여부 체크
+        허용 조건:
+        1. 최소 보유 시간 미달 (빠른 손절)
+        2. 강력한 신호 (4점 이상)
+        3. 손절가 도달
+        """
+        bracket = self.brackets.get(symbol)
+        if not bracket:
+            return True  # 브래킷 정보 없으면 허용 (안전)
+        
+        entry_ts = bracket.get("entry_ts", 0)
+        if not entry_ts:
+            return True
+        
+        # 최소 보유 시간 체크
+        hold_minutes = (time.time() - entry_ts) / 60.0
+        min_hold = self.trailing_config.min_hold_minutes
+        
+        # 조건 1: 최소 보유 시간 미달 (빠른 손절)
+        if hold_minutes < min_hold:
+            logger.info(f"✅ FLIP 허용 (빠른 손절): {symbol} 보유시간 {hold_minutes:.1f}분 < {min_hold}분")
+            return True
+        
+        # 조건 2: 강력한 신호 (4점 이상)
+        min_signal = self.trailing_config.flip_min_signal_score
+        if signal_strength >= min_signal:
+            logger.info(f"✅ FLIP 허용 (강력한 신호): {symbol} 신호 강도 {signal_strength} >= {min_signal}")
+            return True
+        
+        # 조건 3: 손절가 도달 여부 체크
+        sl_price = bracket.get("sl")
+        side = bracket.get("side")
+        
+        if sl_price and side:
+            if side == "LONG" and current_price <= sl_price * 1.005:  # 0.5% 여유
+                logger.info(f"✅ FLIP 허용 (손절가 도달): {symbol} LONG 현재가 {current_price:.2f} <= SL {sl_price:.2f}")
+                return True
+            elif side == "SHORT" and current_price >= sl_price * 0.995:  # 0.5% 여유
+                logger.info(f"✅ FLIP 허용 (손절가 도달): {symbol} SHORT 현재가 {current_price:.2f} >= SL {sl_price:.2f}")
+                return True
+        
+        # 모든 조건 미달
+        logger.warning(
+            f"⚠️ FLIP 거부: {symbol} "
+            f"보유시간 {hold_minutes:.1f}분 >= {min_hold}분, "
+            f"신호강도 {signal_strength} < {min_signal}, "
+            f"손절가 미도달"
+        )
+        return False
+
+    async def _check_and_update_trailing_tp(self, symbol: str, current_price: float):
+        """
+        트레일링 익절 체크 및 업데이트
+        - 최고가/최저가 업데이트
+        - 트레일링 활성화 조건 체크
+        - 익절가 동적 조정
+        """
+        if not self.trailing_config.enabled:
+            return
+        
+        bracket = self.brackets.get(symbol)
+        if not bracket:
+            return
+        
+        side = bracket.get("side")
+        entry_price = bracket.get("entry_price", 0)
+        entry_ts = bracket.get("entry_ts", 0)
+        
+        if not entry_price or not entry_ts:
+            return
+        
+        # 최소 보유 시간 체크
+        hold_minutes = (time.time() - entry_ts) / 60.0
+        if hold_minutes < self.trailing_config.min_hold_minutes:
+            return
+        
+        leverage = bracket.get("leverage", 1)
+        
+        # LONG 포지션 트레일링
+        if side == "LONG":
+            # 최고가 업데이트
+            high_water_mark = bracket.get("high_water_mark", entry_price)
+            if current_price > high_water_mark:
+                high_water_mark = current_price
+                bracket["high_water_mark"] = high_water_mark
+                logger.debug(f"🎯 {symbol} LONG 최고가 업데이트: {high_water_mark:.2f}")
+            
+            # 수익률 계산 (레버리지 고려)
+            profit_pct = ((current_price - entry_price) / entry_price) * 100.0 * leverage
+            
+            # 트레일링 활성화 조건 체크
+            if not bracket.get("trailing_active") and profit_pct >= self.trailing_config.activation_pct:
+                bracket["trailing_active"] = True
+                logger.info(f"✨ {symbol} 트레일링 익절 활성화! 수익률: {profit_pct:.2f}% (최소: {self.trailing_config.activation_pct}%)")
+            
+            # 트레일링 활성화 시 익절가 동적 조정
+            if bracket.get("trailing_active"):
+                # 최고가에서 distance_pct% 하락한 가격으로 익절가 설정
+                new_tp = high_water_mark * (1 - self.trailing_config.distance_pct / 100.0)
+                current_tp = bracket.get("tp")
+                
+                # 익절가가 진입가보다 높고, 기존 익절가보다 높으면 업데이트
+                if new_tp > entry_price and (not current_tp or new_tp > current_tp):
+                    try:
+                        # 기존 익절 주문 취소
+                        if bracket.get("tp_order_id"):
+                            await self.binance_client.cancel_order(symbol, bracket["tp_order_id"])
+                        
+                        # 새 익절 주문 생성
+                        qty = bracket.get("qty", 0)
+                        new_tp_order = await self.binance_client.place_limit_order(
+                            symbol=symbol,
+                            side="SELL",
+                            quantity=qty,
+                            price=new_tp,
+                            reduce_only=True
+                        )
+                        
+                        bracket["tp"] = new_tp
+                        bracket["tp_order_id"] = new_tp_order.get("orderId")
+                        
+                        logger.info(f"📈 {symbol} LONG 익절가 상향: {current_tp:.2f} → {new_tp:.2f} (최고가: {high_water_mark:.2f})")
+                    except Exception as e:
+                        logger.error(f"트레일링 익절가 업데이트 실패 {symbol}: {e}")
+        
+        # SHORT 포지션 트레일링
+        elif side == "SHORT":
+            # 최저가 업데이트
+            low_water_mark = bracket.get("low_water_mark", entry_price)
+            if current_price < low_water_mark:
+                low_water_mark = current_price
+                bracket["low_water_mark"] = low_water_mark
+                logger.debug(f"🎯 {symbol} SHORT 최저가 업데이트: {low_water_mark:.2f}")
+            
+            # 수익률 계산 (레버리지 고려)
+            profit_pct = ((entry_price - current_price) / entry_price) * 100.0 * leverage
+            
+            # 트레일링 활성화 조건 체크
+            if not bracket.get("trailing_active") and profit_pct >= self.trailing_config.activation_pct:
+                bracket["trailing_active"] = True
+                logger.info(f"✨ {symbol} 트레일링 익절 활성화! 수익률: {profit_pct:.2f}% (최소: {self.trailing_config.activation_pct}%)")
+            
+            # 트레일링 활성화 시 익절가 동적 조정
+            if bracket.get("trailing_active"):
+                # 최저가에서 distance_pct% 상승한 가격으로 익절가 설정
+                new_tp = low_water_mark * (1 + self.trailing_config.distance_pct / 100.0)
+                current_tp = bracket.get("tp")
+                
+                # 익절가가 진입가보다 낮고, 기존 익절가보다 낮으면 업데이트
+                if new_tp < entry_price and (not current_tp or new_tp < current_tp):
+                    try:
+                        # 기존 익절 주문 취소
+                        if bracket.get("tp_order_id"):
+                            await self.binance_client.cancel_order(symbol, bracket["tp_order_id"])
+                        
+                        # 새 익절 주문 생성
+                        qty = bracket.get("qty", 0)
+                        new_tp_order = await self.binance_client.place_limit_order(
+                            symbol=symbol,
+                            side="BUY",
+                            quantity=abs(qty),
+                            price=new_tp,
+                            reduce_only=True
+                        )
+                        
+                        bracket["tp"] = new_tp
+                        bracket["tp_order_id"] = new_tp_order.get("orderId")
+                        
+                        logger.info(f"📉 {symbol} SHORT 익절가 하향: {current_tp:.2f} → {new_tp:.2f} (최저가: {low_water_mark:.2f})")
+                    except Exception as e:
+                        logger.error(f"트레일링 익절가 업데이트 실패 {symbol}: {e}")
 
     async def _handle_external_close(self, symbol: str, prev_bracket: Dict, current_price: float):
         """
