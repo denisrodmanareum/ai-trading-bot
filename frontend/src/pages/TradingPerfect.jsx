@@ -55,7 +55,7 @@ function TradingPerfect() {
           fetch('/api/trading/balance'),
           fetch('/api/ai/status'),
           fetch('/api/trading/strategy/config'),
-          fetch('/api/trading/symbols'),
+          fetch('/api/coins/selection'),
           fetch('/api/dashboard/overview')
         ]);
 
@@ -74,7 +74,10 @@ function TradingPerfect() {
         }
         if (symRes.ok) {
           const data = await symRes.json();
-          setAvailableSymbols(data.symbols || []);
+          const symbols = data.selected_coins || [];
+          // USDT 페어로 변환 (예: BTC -> BTCUSDT)
+          const symbolsWithUSDT = symbols.map(coin => coin.includes('USDT') ? coin : `${coin}USDT`);
+          setAvailableSymbols(symbolsWithUSDT.length > 0 ? symbolsWithUSDT : ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT']);
         }
         if (dashRes.ok) {
           const dashData = await dashRes.json();

@@ -36,6 +36,7 @@ function Trading() {
   const [showSymbolDropdown, setShowSymbolDropdown] = useState(false);
   const [symbolSearch, setSymbolSearch] = useState('');
   const [aiAnalysis, setAiAnalysis] = useState(null); // AI analysis for manual positions
+  const [availableSymbols, setAvailableSymbols] = useState([]);
 
 
 
@@ -45,6 +46,27 @@ function Trading() {
     if (storedSymbol && storedSymbol !== form.symbol) {
       setForm(prevForm => ({ ...prevForm, symbol: storedSymbol }));
     }
+  }, []);
+
+  // Fetch symbols from hybrid mode coin selection
+  useEffect(() => {
+    const fetchSymbols = async () => {
+      try {
+        const res = await fetch('/api/coins/selection');
+        if (res.ok) {
+          const data = await res.json();
+          const symbols = data.selected_coins || [];
+          // USDT 페어로 변환 (예: BTC -> BTCUSDT)
+          const symbolsWithUSDT = symbols.map(coin => coin.includes('USDT') ? coin : `${coin}USDT`);
+          setAvailableSymbols(symbolsWithUSDT.length > 0 ? symbolsWithUSDT : ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT']);
+        }
+      } catch (e) {
+        console.error(e);
+        // 실패시 기본 코어 코인들 표시
+        setAvailableSymbols(['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT']);
+      }
+    };
+    fetchSymbols();
   }, []);
 
   // Data Fetching Logic...
@@ -237,7 +259,7 @@ function Trading() {
 
               {/* Symbol List */}
               <div style={{ padding: '0.5rem 0' }}>
-                {['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'MATICUSDT', 'DOTUSDT', 'AVAXUSDT', 'LINKUSDT', 'UNIUSDT', 'ATOMUSDT', 'LTCUSDT', 'NEARUSDT', 'APTUSDT', 'ARBUSDT', 'OPUSDT']
+                {availableSymbols
                   .filter(s => s.toLowerCase().includes(symbolSearch.toLowerCase()))
                   .map(symbol => (
                     <div

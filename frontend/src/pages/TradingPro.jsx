@@ -57,17 +57,22 @@ function TradingPro() {
     return () => clearInterval(timer);
   }, [symbol]);
 
-  // Fetch symbols
+  // Fetch symbols from hybrid mode coin selection
   useEffect(() => {
     const fetchSymbols = async () => {
       try {
-        const res = await fetch('/api/trading/symbols');
+        const res = await fetch('/api/coins/selection');
         if (res.ok) {
           const data = await res.json();
-          setAvailableSymbols(data.symbols || []);
+          const symbols = data.selected_coins || [];
+          // USDT 페어로 변환 (예: BTC -> BTCUSDT)
+          const symbolsWithUSDT = symbols.map(coin => coin.includes('USDT') ? coin : `${coin}USDT`);
+          setAvailableSymbols(symbolsWithUSDT);
         }
       } catch (e) {
         console.error(e);
+        // 실패시 기본 코어 코인들 표시
+        setAvailableSymbols(['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT']);
       }
     };
     fetchSymbols();
