@@ -13,9 +13,9 @@ router = APIRouter()
 async def get_trading_symbols():
     """Get list of available trading symbols"""
     try:
-        from app.main import exchange_client
+        import app.main as main
         
-        if exchange_client is None:
+        if main.exchange_client is None:
             # Return default symbols if binance not initialized
             return {
                 "symbols": [
@@ -27,7 +27,7 @@ async def get_trading_symbols():
             }
         
         # Get exchange info from Binance
-        exchange_info = await exchange_client.get_exchange_info()
+        exchange_info = await main.exchange_client.get_exchange_info()
         
         # Filter USDT perpetual contracts
         symbols = [

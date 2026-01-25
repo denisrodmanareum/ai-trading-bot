@@ -46,18 +46,18 @@ class TelegramTestRequest(BaseModel):
 async def get_settings():
     """Get current settings"""
     try:
-        from app.main import auto_trading_service
+        import app.main as main
         from app.services.notifications import notification_manager
         
         # Guard if service not ready
-        if not auto_trading_service:
+        if not main.auto_trading_service:
             # Return defaults if service not started yet
             return {
                 "risk": {},
                 "notifications": notification_manager.enabled_channels
             }
 
-        rc = auto_trading_service.risk_config
+        rc = main.auto_trading_service.risk_config
         return {
             "risk": {
                 "daily_loss_limit": rc.daily_loss_limit,
@@ -85,11 +85,11 @@ async def update_settings(
 ):
     """Update settings"""
     try:
-        from app.main import auto_trading_service
+        import app.main as main
         from app.services.notifications import notification_manager
         
-        if auto_trading_service and risk:
-            auto_trading_service.update_risk_config(
+        if main.auto_trading_service and risk:
+            main.auto_trading_service.update_risk_config(
                 daily_loss_limit=risk.daily_loss_limit,
                 max_margin_level=risk.max_margin_level,
                 kill_switch=risk.kill_switch,
@@ -121,15 +121,15 @@ async def update_settings(
 async def get_risk_status():
     """Get risk management status"""
     try:
-        from app.main import auto_trading_service
-        if not auto_trading_service:
+        import app.main as main
+        if not main.auto_trading_service:
              return {"status": "starting", "risk_status": "NORMAL"}
              
         return {
-            "risk_status": auto_trading_service.risk_status,
-            "daily_loss": auto_trading_service.current_daily_loss,
-            "margin_level": auto_trading_service.last_margin_level,
-            "kill_switch": auto_trading_service.risk_config.kill_switch
+            "risk_status": main.auto_trading_service.risk_status,
+            "daily_loss": main.auto_trading_service.current_daily_loss,
+            "margin_level": main.auto_trading_service.last_margin_level,
+            "kill_switch": main.auto_trading_service.risk_config.kill_switch
         }
     except Exception as e:
         logger.error(f"Failed to get risk status: {e}")

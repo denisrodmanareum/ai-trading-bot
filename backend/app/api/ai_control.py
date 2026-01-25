@@ -67,10 +67,10 @@ async def get_status():
     active_agent = None
     
     try:
-        from app.main import auto_trading_service
-        if auto_trading_service:
-            is_running = auto_trading_service.running
-            active_agent = auto_trading_service.agent
+        import app.main as main
+        if main.auto_trading_service:
+            is_running = main.auto_trading_service.running
+            active_agent = main.auto_trading_service.agent
     except Exception as e:
         logger.warning(f"Failed to access auto_trading_service: {e}")
         is_running = False
@@ -98,18 +98,18 @@ async def get_status():
 async def start_ai():
     """Start AI auto trading"""
     try:
-        from app.main import auto_trading_service
+        import app.main as main
         
-        if auto_trading_service is None:
+        if main.auto_trading_service is None:
             raise HTTPException(status_code=500, detail="Auto trading service not initialized")
         
-        if auto_trading_service.running:
+        if main.auto_trading_service.running:
             return {
                 "status": "already_running",
                 "message": "AI auto trading is already running"
             }
         
-        await auto_trading_service.start()
+        await main.auto_trading_service.start()
         
         return {
             "status": "success",
@@ -125,18 +125,18 @@ async def start_ai():
 async def stop_ai():
     """Stop AI auto trading"""
     try:
-        from app.main import auto_trading_service
+        import app.main as main
         
-        if auto_trading_service is None:
+        if main.auto_trading_service is None:
             raise HTTPException(status_code=500, detail="Auto trading service not initialized")
         
-        if not auto_trading_service.running:
+        if not main.auto_trading_service.running:
             return {
                 "status": "already_stopped",
                 "message": "AI auto trading is not running"
             }
         
-        await auto_trading_service.stop()
+        await main.auto_trading_service.stop()
         
         return {
             "status": "success",
