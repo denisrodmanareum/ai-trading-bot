@@ -6,11 +6,11 @@ async def get_recent_trades(symbol: str = "BTCUSDT", limit: int = 30):
     try:
         import app.main as main
         
-        if main.binance_client is None:
-            raise HTTPException(status_code=503, detail="Binance not connected")
+        if main.exchange_client is None:
+            raise HTTPException(status_code=503, detail="Exchange not connected")
         
-        # Fetch recent trades from Binance
-        trades = await main.binance_client.client.futures_recent_trades(symbol=symbol, limit=limit)
+        # Fetch recent trades
+        trades = await main.exchange_client.client.futures_recent_trades(symbol=symbol, limit=limit)
         
         # Format for frontend
         formatted_trades = [{
