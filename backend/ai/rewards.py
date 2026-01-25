@@ -180,10 +180,10 @@ class ImprovedReward(BaseReward):
         else:
             holding_reward = 0
         
-        # Combined Reward with weights
+        # Combined Reward with weights (🔧 공격적 수익 추구형으로 리밸런싱)
         total_reward = (
-            0.35 * pnl_reward +           # PnL 35%
-            0.30 * risk_adjusted +        # Risk-adjusted 30%
+            0.45 * pnl_reward +           # PnL 45% (🔧 35→45)
+            0.20 * risk_adjusted +        # Risk-adjusted 20% (🔧 30→20)
             0.10 * trade_cost +           # Trade cost 10%
             0.15 * drawdown_penalty +     # Drawdown 15%
             0.05 * freq_penalty +         # Frequency 5%

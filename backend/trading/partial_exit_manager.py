@@ -16,19 +16,19 @@ class PartialExitManager:
     """
     
     def __init__(self):
-        # SCALP 모드: 빠른 3단계 익절
+        # SCALP 모드: 더 공격적인 3단계 익절 (0.8%→1.5% 시작)
         self.scalp_levels = [
-            {'pct': 0.8, 'exit': 0.3, 'name': 'Level1'},   # +0.8% → 30% 청산
-            {'pct': 1.5, 'exit': 0.4, 'name': 'Level2'},   # +1.5% → 40% 추가 (총 70%)
-            {'pct': 2.5, 'exit': 1.0, 'name': 'Level3'}    # +2.5% → 나머지 전부
+            {'pct': 1.5, 'exit': 0.2, 'name': 'Level1'},   # +1.5% → 20% 청산 (노이즈 방지)
+            {'pct': 3.0, 'exit': 0.3, 'name': 'Level2'},   # +3.0% → 30% 추가
+            {'pct': 5.0, 'exit': 1.0, 'name': 'Level3'}    # +5.0% → 전량 익절
         ]
         
-        # SWING 모드: 느린 4단계 익절
+        # SWING 모드: 추세 추종형 4단계 익절
         self.swing_levels = [
-            {'pct': 2.0, 'exit': 0.25, 'name': 'Level1'},  # +2% → 25% 청산
-            {'pct': 4.0, 'exit': 0.25, 'name': 'Level2'},  # +4% → 25% 추가 (총 50%)
-            {'pct': 7.0, 'exit': 0.3, 'name': 'Level3'},   # +7% → 30% 추가 (총 80%)
-            {'pct': 12.0, 'exit': 1.0, 'name': 'Level4'}   # +12% → 나머지 전부
+            {'pct': 3.0, 'exit': 0.25, 'name': 'Level1'},  # +3% → 25% 청산
+            {'pct': 6.0, 'exit': 0.25, 'name': 'Level2'},  # +6% → 25% 추가
+            {'pct': 10.0, 'exit': 0.3, 'name': 'Level3'},  # +10% → 30% 추가
+            {'pct': 20.0, 'exit': 1.0, 'name': 'Level4'}   # +20% → 전량 익절 (잭팟)
         ]
         
         # 심볼별 익절 상태 추적

@@ -81,17 +81,17 @@ class TrailingTakeProfitConfig:
         
         if mode == "SCALP":
             return {
-                'activation_pct': 1.2,  # 🔧 0.8→1.2% (수수료 0.4% + 여유 0.8%)
-                'distance_pct': 0.8,    # 0.8% 하락 시 익절
-                'min_hold_minutes': 5,  # 5분 최소 보유
-                'flip_min_signal_score': 4  # 스캘핑은 더 유연
+                'activation_pct': 2.0,  # 🔧 1.2→2.0% (더 큰 추세 추종)
+                'distance_pct': 1.0,    # 🔧 0.8→1.0% (노이즈 허용 확대)
+                'min_hold_minutes': 5,
+                'flip_min_signal_score': 4
             }
         else:  # SWING
             return {
-                'activation_pct': 2.5,  # 🔧 2.0→2.5% (수수료 + 안정적 수익)
-                'distance_pct': 1.5,    # 🔧 2.0→1.5% (빠른 익절)
-                'min_hold_minutes': 60,  # 60분 최소 보유
-                'flip_min_signal_score': 5  # 강한 신호만 FLIP
+                'activation_pct': 4.0,  # 🔧 2.5→4.0% (스윙 수익 극대화)
+                'distance_pct': 2.0,    # 🔧 1.5→2.0% (추세 끝까지 먹기)
+                'min_hold_minutes': 60,
+                'flip_min_signal_score': 5
             }
 
 class StrategyConfig:
@@ -1126,25 +1126,38 @@ class AutoTradingService:
             current_balance = 5000.0  # Fallback
         
         if self.risk_config.position_mode == "ADAPTIVE":
-            # 🔧 AI ADAPTIVE MODE: 코어코인과 알트코인 차등 배분
+            # 🔧 AI ADAPTIVE MODE: 코어코인과 알트코인 차등 배분 + AI 확신도 반영
             try:
                 # 코어코인 여부 확인
                 is_core = symbol in self.risk_config.core_coins
                 
+                # AI 확신도 가중치 (60% 이하는 패널티, 85% 이상은 보너스)
+                # ai_confidence는 0.0 ~ 1.0 범위
+                ai_weight = 1.0
+                if market_state:
+                    # live_predict에서 계산된 confidence 가져오기 (만약 market_state에 없다면 기본 1.0)
+                    conf = market_state.get('ai_confidence', 0.7) 
+                    if conf >= 0.90:
+                        ai_weight = 1.5  # 초강력 확신: 1.5배
+                    elif conf >= 0.80:
+                        ai_weight = 1.2  # 강력 확신: 1.2배
+                    elif conf <= 0.60:
+                        ai_weight = 0.7  # 낮은 확신: 0.7배
+                
                 if is_core:
-                    # 코어코인: 높은 비율 (기본 5%)
-                    base_notional = current_balance * self.risk_config.core_coin_ratio
+                    # 코어코인: 높은 비율 (기본 5%) × AI 가중치
+                    base_notional = current_balance * self.risk_config.core_coin_ratio * ai_weight
                     coin_type = "Core"
-                    ratio_pct = self.risk_config.core_coin_ratio * 100
+                    ratio_pct = (self.risk_config.core_coin_ratio * ai_weight) * 100
                 else:
-                    # 알트코인: 낮은 비율 (기본 2%)
-                    base_notional = current_balance * self.risk_config.alt_coin_ratio
+                    # 알트코인: 낮은 비율 (기본 2%) × AI 가중치
+                    base_notional = current_balance * self.risk_config.alt_coin_ratio * ai_weight
                     coin_type = "Alt"
-                    ratio_pct = self.risk_config.alt_coin_ratio * 100
+                    ratio_pct = (self.risk_config.alt_coin_ratio * ai_weight) * 100
                 
                 logger.info(
-                    f"💰 Adaptive Mode [{coin_type}]: {symbol} = "
-                    f"{current_balance:.0f} × {ratio_pct:.1f}% = {base_notional:.0f} USDT"
+                    f"💰 Adaptive Sizing [{coin_type}]: {symbol} = "
+                    f"{current_balance:.0f} × {ratio_pct:.1f}% (AI Weight: {ai_weight:.1f}) = {base_notional:.0f} USDT"
                 )
             except Exception as e:
                 logger.warning(f"Adaptive sizing failed: {e}, using fallback")
