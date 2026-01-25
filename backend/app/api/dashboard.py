@@ -15,7 +15,7 @@ async def get_dashboard_overview() -> Dict:
         import app.main as main
         
         if main.exchange_client is None:
-            raise HTTPException(status_code=503, detail="Binance not connected")
+            raise HTTPException(status_code=503, detail="Exchange not connected")
         
         # 1. Basic Info
         account = await main.exchange_client.get_account_info()
@@ -66,8 +66,8 @@ async def get_dashboard_overview() -> Dict:
         mark_price_data = {}
         ticker_24h = {}
         try:
-            mark_price_data = await main.exchange_client.client.futures_mark_price(symbol="BTCUSDT")
-            ticker_24h = await main.exchange_client.client.futures_ticker(symbol="BTCUSDT")
+            mark_price_data = await main.exchange_client.get_mark_price_info(symbol="BTCUSDT")
+            ticker_24h = await main.exchange_client.get_24h_ticker(symbol="BTCUSDT")
         except Exception as e:
             logger.error(f"Failed to get mark/ticker data: {e}")
 
@@ -87,12 +87,12 @@ async def get_dashboard_overview() -> Dict:
                 "btc_dominance": btc_dominance, 
                 "usd_krw": usd_krw_rate,
                 "btc_krw": btc_price_krw,
-                "mark_price": float(mark_price_data.get('markPrice', 0)),
-                "index_price": float(mark_price_data.get('indexPrice', 0)),
-                "next_funding_time": int(mark_price_data.get('nextFundingTime', 0)),
-                "high_24h": float(ticker_24h.get('highPrice', 0)),
-                "low_24h": float(ticker_24h.get('lowPrice', 0)),
-                "volume_24h": float(ticker_24h.get('volume', 0))
+                "mark_price": mark_price_data.get('mark_price', 0),
+                "index_price": mark_price_data.get('index_price', 0),
+                "next_funding_time": mark_price_data.get('next_funding_time', 0),
+                "high_24h": ticker_24h.get('high_24h', 0),
+                "low_24h": ticker_24h.get('low_24h', 0),
+                "volume_24h": ticker_24h.get('volume_24h', 0)
             }
         }
         
@@ -108,7 +108,7 @@ async def get_chart_data(symbol: str, interval: str = "1m", limit: int = 50):
         import app.main as main
         
         if main.exchange_client is None:
-            raise HTTPException(status_code=503, detail="Binance not connected")
+            raise HTTPException(status_code=503, detail="Exchange not connected")
         
         klines = await main.exchange_client.get_raw_klines(
             symbol=symbol,
@@ -174,16 +174,9 @@ async def get_dashboard_recent_trades(symbol: str = "BTCUSDT", limit: int = 30):
     try:
         import app.main as main
         if main.exchange_client is None:
-            raise HTTPException(status_code=503, detail="Binance not connected")
+            raise HTTPException(status_code=503, detail="Exchange not connected")
             
-        trades = await main.exchange_client.client.futures_recent_trades(symbol=symbol, limit=limit)
-        return [{
-            "id": t['id'],
-            "price": t['price'],
-            "qty": t['qty'],
-            "time": t['time'],
-            "is_buyer_maker": t['isBuyerMaker']
-        } for t in trades]
+        return await main.exchange_client.get_recent_trades(symbol=symbol, limit=limit)
     except Exception as e:
         logger.error(f"Failed to get dashboard trades: {e}")
         raise HTTPException(status_code=500, detail=str(e))

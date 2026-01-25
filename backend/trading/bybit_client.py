@@ -205,3 +205,70 @@ class BybitClient(BaseExchangeClient):
     async def get_exchange_info(self) -> Dict:
         """Get symbols info"""
         return await self._request("GET", "/v5/market/instruments-info", {"category": "linear"})
+
+    async def get_raw_klines(self, symbol: str, interval: str, limit: int = 50) -> List[List]:
+        """Get raw klines (list of lists)"""
+        mapping = {"1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D"}
+        bybit_interval = mapping.get(interval, "60")
+        
+        resp = await self._request("GET", "/v5/market/kline", {
+            "category": "linear",
+            "symbol": symbol,
+            "interval": bybit_interval,
+            "limit": limit
+        })
+        
+        if resp.get("retCode") == 0:
+            return resp["result"]["list"]
+        return []
+
+    async def get_mark_price(self, symbol: str) -> float:
+        """Get mark price for symbol"""
+        resp = await self._request("GET", "/v5/market/tickers", {"category": "linear", "symbol": symbol})
+        if resp.get("retCode") == 0 and resp["result"]["list"]:
+            return float(resp["result"]["list"][0].get("markPrice", 0))
+        return 0.0
+
+    async def get_mark_price_info(self, symbol: str) -> Dict:
+        """Get comprehensive mark price info"""
+        resp = await self._request("GET", "/v5/market/tickers", {"category": "linear", "symbol": symbol})
+        if resp.get("retCode") == 0 and resp["result"]["list"]:
+            res = resp["result"]["list"][0]
+            return {
+                "mark_price": float(res.get("markPrice", 0)),
+                "index_price": float(res.get("indexPrice", 0)),
+                "next_funding_time": int(res.get("nextFundingTime", 0))
+            }
+        return {"mark_price": 0, "index_price": 0, "next_funding_time": 0}
+
+    async def get_24h_ticker(self, symbol: str) -> Dict:
+        """Get 24h ticker data"""
+        resp = await self._request("GET", "/v5/market/tickers", {"category": "linear", "symbol": symbol})
+        if resp.get("retCode") == 0 and resp["result"]["list"]:
+            res = resp["result"]["list"][0]
+            return {
+                "high_24h": float(res.get("highPrice24h", 0)),
+                "low_24h": float(res.get("lowPrice24h", 0)),
+                "volume_24h": float(res.get("volume24h", 0))
+            }
+        return {"high_24h": 0, "low_24h": 0, "volume_24h": 0}
+
+    async def get_user_trades(self, symbol: str = "BTCUSDT", limit: int = 50) -> List[Dict]:
+        """Get standardized user trade history"""
+        resp = await self._request("GET", "/v5/execution/list", {
+            "category": "linear",
+            "symbol": symbol,
+            "limit": limit
+        }, signed=True)
+        if resp.get("retCode") == 0:
+            trades = resp["result"]["list"]
+            return [{
+                "symbol": t['symbol'],
+                "price": float(t['price']),
+                "qty": float(t['qty']),
+                "pnl": float(t.get('execFee', 0)) * -1.0, # Bybit execFee is negative commission
+                "commission": abs(float(t.get('execFee', 0))),
+                "side": t['side'].upper(), # Buy -> BUY
+                "time": int(t['execTime'])
+            } for t in trades]
+        return []

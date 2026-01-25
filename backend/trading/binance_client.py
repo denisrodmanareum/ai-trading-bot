@@ -427,10 +427,20 @@ class BinanceClient(BaseExchangeClient):
             logger.error(f"Failed to cancel order: {e}")
             raise
 
-    async def get_user_trades(self, symbol="BTCUSDT", limit=50):
-        """Get user trade history with PnL"""
+    async def get_user_trades(self, symbol: str = "BTCUSDT", limit: int = 50) -> List[Dict]:
+        """Get user trade history with PnL (Standardized)"""
         try:
-            return await self.client.futures_account_trades(symbol=symbol, limit=limit)
+            await self.ensure_connection()
+            trades = await self.client.futures_account_trades(symbol=symbol, limit=limit)
+            return [{
+                "symbol": t['symbol'],
+                "price": float(t['price']),
+                "qty": float(t['qty']),
+                "pnl": float(t['realizedPnl']),
+                "commission": float(t['commission']),
+                "side": t['side'],
+                "time": int(t['time'])
+            } for t in trades]
         except Exception as e:
             logger.error(f"Failed to get user trades: {e}")
             return []
@@ -443,4 +453,58 @@ class BinanceClient(BaseExchangeClient):
         except Exception as e:
             logger.error(f"Failed to get exchange info: {e}")
             return {"symbols": []}
+
+    async def get_mark_price(self, symbol: str) -> float:
+        """Get mark price for symbol"""
+        try:
+            await self.ensure_connection()
+            res = await self.client.futures_mark_price(symbol=symbol)
+            return float(res['markPrice'])
+        except Exception as e:
+            logger.error(f"Failed to get mark price for {symbol}: {e}")
+            return 0.0
+
+    async def get_mark_price_info(self, symbol: str) -> Dict:
+        """Get comprehensive mark price info"""
+        try:
+            await self.ensure_connection()
+            res = await self.client.futures_mark_price(symbol=symbol)
+            return {
+                "mark_price": float(res['markPrice']),
+                "index_price": float(res['indexPrice']),
+                "next_funding_time": int(res['nextFundingTime'])
+            }
+        except Exception as e:
+            logger.error(f"Failed to get mark price info for {symbol}: {e}")
+            return {"mark_price": 0, "index_price": 0, "next_funding_time": 0}
+
+    async def get_24h_ticker(self, symbol: str) -> Dict:
+        """Get 24h ticker data"""
+        try:
+            await self.ensure_connection()
+            res = await self.client.futures_ticker(symbol=symbol)
+            return {
+                "high_24h": float(res['highPrice']),
+                "low_24h": float(res['lowPrice']),
+                "volume_24h": float(res['volume'])
+            }
+        except Exception as e:
+            logger.error(f"Failed to get 24h ticker for {symbol}: {e}")
+            return {"high_24h": 0, "low_24h": 0, "volume_24h": 0}
+
+    async def get_recent_trades(self, symbol: str, limit: int = 30) -> List[Dict]:
+        """Get recent market trades"""
+        try:
+            await self.ensure_connection()
+            trades = await self.client.futures_recent_trades(symbol=symbol, limit=limit)
+            return [{
+                "id": t['id'],
+                "price": t['price'],
+                "qty": t['qty'],
+                "time": t['time'],
+                "is_buyer_maker": t['isBuyerMaker']
+            } for t in trades]
+        except Exception as e:
+            logger.error(f"Failed to get recent trades for {symbol}: {e}")
+            return []
 

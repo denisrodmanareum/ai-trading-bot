@@ -208,19 +208,10 @@ app.include_router(webhook.router, prefix="/api/webhook", tags=["Webhook"])  # ð
 
 @app.get("/api/direct/recent-trades")
 async def get_recent_trades_direct(symbol: str = "BTCUSDT", limit: int = 30):
-    if exchange_client is None:
-        return []
     try:
-        trades = await exchange_client.client.futures_recent_trades(symbol=symbol, limit=limit)
-        return [{
-            "id": t['id'],
-            "price": t['price'],
-            "qty": t['qty'],
-            "time": t['time'],
-            "is_buyer_maker": t['isBuyerMaker']
-        } for t in trades]
+        return await exchange_client.get_recent_trades(symbol=symbol, limit=limit)
     except Exception as e:
-        logger.error(f"Direct trade fetch failed: {e}")
+        logger.error(f"Failed to fetch trades: {e}")
         return []
 
 

@@ -74,3 +74,33 @@ class BaseExchangeClient(ABC):
     async def get_exchange_info(self) -> Dict:
         """Get exchange trading rules"""
         pass
+
+    @abstractmethod
+    async def get_raw_klines(self, symbol: str, interval: str, limit: int) -> List[List]:
+        """Get raw klines (list of lists)"""
+        pass
+
+    @abstractmethod
+    async def get_mark_price(self, symbol: str) -> float:
+        """Get mark price for symbol"""
+        pass
+
+    @abstractmethod
+    async def get_mark_price_info(self, symbol: str) -> Dict:
+        """Get comprehensive mark price info (mark, index, funding time)"""
+        pass
+
+    @abstractmethod
+    async def get_24h_ticker(self, symbol: str) -> Dict:
+        """Get 24h ticker data (high, low, volume)"""
+        pass
+
+    @abstractmethod
+    async def get_recent_trades(self, symbol: str, limit: int) -> List[Dict]:
+        """Get recent market trades"""
+        pass
+
+    @abstractmethod
+    async def get_user_trades(self, symbol: str, limit: int) -> List[Dict]:
+        """Get user trade history with PnL"""
+        pass

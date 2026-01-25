@@ -758,16 +758,14 @@ async def get_weekly_summary():
             end_time = datetime.now()
             start_time = end_time - timedelta(days=7)
             
-            # Correctly call the underlying client for time-limited trades
-            # Using binance-specific attributes if available, otherwise generic
-            if hasattr(exchange_client, 'client') and hasattr(exchange_client.client, 'futures_account_trades'):
-                trades = await exchange_client.client.futures_account_trades(
-                    symbol="BTCUSDT",
-                    startTime=int(start_time.timestamp() * 1000),
-                    endTime=int(end_time.timestamp() * 1000)
-                )
-            else:
-                trades = await exchange_client.get_user_trades(limit=100) # Fallback
+            # Use standardized get_user_trades for time-limited trades
+            # The `get_user_trades` method should handle the underlying client specifics
+            trades = await exchange_client.get_user_trades(
+                symbol="BTCUSDT", # Assuming BTCUSDT for weekly summary, or could be made configurable
+                startTime=int(start_time.timestamp() * 1000),
+                endTime=int(end_time.timestamp() * 1000),
+                limit=500 # Increased limit to ensure enough trades for a week
+            )
         finally:
             pass # Managed by factory
         
@@ -779,8 +777,8 @@ async def get_weekly_summary():
         
         # Calculate stats
         total_trades = len(trades)
-        total_pnl = sum(float(t.get('realizedPnl', 0)) for t in trades)
-        winning_trades = sum(1 for t in trades if float(t.get('realizedPnl', 0)) > 0)
+        total_pnl = sum(t.get('pnl', 0.0) for t in trades)
+        winning_trades = sum(1 for t in trades if t.get('pnl', 0.0) > 0)
         win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
         
         return {

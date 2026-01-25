@@ -202,7 +202,7 @@ async def get_balance():
         import app.main as main
         
         if main.exchange_client is None:
-            raise HTTPException(status_code=503, detail="Binance not connected")
+            raise HTTPException(status_code=503, detail="Exchange not connected")
         
         account = await main.exchange_client.get_account_info()
         return account
@@ -452,27 +452,22 @@ async def sync_data():
             await session.execute(text("DELETE FROM trades"))
             
             for t in user_trades:
-                pnl = float(t['realizedPnl'])
-                commission = float(t['commission'])
-                price = float(t['price'])
-                qty = float(t['qty'])
+                pnl = t['pnl']
+                commission = t['commission']
+                price = t['price']
+                qty = t['qty']
                 side = t['side'] # BUY / SELL
                 action = "LONG" if side == "BUY" else "SHORT" # Simplified
                 
-                 # If PnL != 0, it's a CLOSE or partial close. 
-                 # If side is SELL and PnL != 0, it *WAS* a Long Closing? Or Opening Short?
-                 # Binance reports 'side' of the trade.
-                 # Actually, let's just log it as is.
-                
                 trade = Trade(
                     symbol=t['symbol'],
-                    action=side, # Just use BUY/SELL for clarity
+                    action=side,
                     side=side,
                     price=price,
                     quantity=qty,
                     pnl=pnl,
                     commission=commission,
-                    strategy="binance_sync",
+                    strategy="exchange_sync",
                     reason="Imported from Exchange",
                     timestamp=datetime.fromtimestamp(t['time'] / 1000.0, timezone.utc)
                 )
@@ -481,7 +476,7 @@ async def sync_data():
             
             await session.commit()
 
-        return {"status": "synced", "message": f"Synced {count} trades from Binance (History Replaced)"}
+        return {"status": "synced", "message": f"Synced {count} trades from Exchange (History Replaced)"}
     except Exception as e:
         logger.error(f"Sync failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -581,10 +576,9 @@ async def get_recent_trades(symbol: str = "BTCUSDT", limit: int = 30):
         import app.main as main
         
         if main.exchange_client is None:
-            raise HTTPException(status_code=503, detail="Binance not connected")
+            raise HTTPException(status_code=503, detail="Exchange not connected")
         
-        # Fetch recent trades from Binance
-        trades = await main.exchange_client.client.futures_recent_trades(symbol=symbol, limit=limit)
+        return await main.exchange_client.get_recent_trades(symbol=symbol, limit=limit)
         
         # Format for frontend
         formatted_trades = [{
@@ -601,6 +595,22 @@ async def get_recent_trades(symbol: str = "BTCUSDT", limit: int = 30):
         logger.error(f"Failed to get recent trades: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# The following get_user_trades function is assumed to be a method of the ExchangeClient class
+# and is not directly added to this router file. The instruction implies its definition
+# is updated elsewhere, and sync_data (the initial block) now uses its standardized output.
+# For clarity, if it were to be a router endpoint, it would look like this:
+# @router.get("/user_trades")
+# async def get_user_trades_endpoint(symbol: str = "BTCUSDT", limit: int = 50) -> List[Dict]:
+#     """Get user trade history with PnL (Standardized)"""
+#     try:
+#         import app.main as main
+#         if main.exchange_client is None:
+#             raise HTTPException(status_code=503, detail="Exchange not connected")
+#         return await main.exchange_client.get_user_trades(symbol=symbol, limit=limit)
+#     except Exception as e:
+#         logger.error(f"Failed to get user trades: {e}")
+#         raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/ticker/{symbol}")
 async def get_ticker_info(symbol: str):
@@ -608,25 +618,25 @@ async def get_ticker_info(symbol: str):
     try:
         import app.main as main
         if main.exchange_client is None:
-            raise HTTPException(status_code=503, detail="Binance not connected")
+            raise HTTPException(status_code=503, detail="Exchange not connected")
         
         # Parallel fetch for speed
-        mark_price_info, ticker_24h_info = await asyncio.gather(
-            main.exchange_client.client.futures_mark_price(symbol=symbol),
-            main.exchange_client.client.futures_ticker(symbol=symbol)
+        mark_info, ticker_info = await asyncio.gather(
+            main.exchange_client.get_mark_price_info(symbol=symbol),
+            main.exchange_client.get_24h_ticker(symbol=symbol)
         )
         
         return {
             "symbol": symbol,
-            "mark_price": float(mark_price_info['markPrice']),
-            "index_price": float(mark_price_info['indexPrice']),
-            "funding_rate": float(mark_price_info['lastFundingRate']),
-            "next_funding_time": int(mark_price_info['nextFundingTime']),
-            "high_24h": float(ticker_24h_info['highPrice']),
-            "low_24h": float(ticker_24h_info['lowPrice']),
-            "volume_24h": float(ticker_24h_info['volume']),
-            "turnover_24h": float(ticker_24h_info['quoteVolume']),
-            "price_change_pct": float(ticker_24h_info['priceChangePercent'])
+            "mark_price": mark_info.get('mark_price', 0),
+            "index_price": mark_info.get('index_price', 0),
+            "funding_rate": 0.0, # Not provided by unified mark_price_info yet
+            "next_funding_time": mark_info.get('next_funding_time', 0),
+            "high_24h": ticker_info.get('high_24h', 0),
+            "low_24h": ticker_info.get('low_24h', 0),
+            "volume_24h": ticker_info.get('volume_24h', 0),
+            "turnover_24h": 0.0,
+            "price_change_pct": 0.0
         }
     except Exception as e:
         logger.error(f"Failed to get ticker info for {symbol}: {e}")

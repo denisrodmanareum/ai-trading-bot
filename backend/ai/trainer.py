@@ -53,7 +53,7 @@ async def fetch_training_data(
             # Use binance-specific Client object if available or generalize
             # For now, we assume Binance for training data fetch OR we add get_historical_klines to base client
             if hasattr(client, 'client'):
-                klines = await client.client.futures_klines(
+                klines = await client.get_raw_klines(
                     symbol=symbol,
                     interval=interval,
                     limit=limit,
