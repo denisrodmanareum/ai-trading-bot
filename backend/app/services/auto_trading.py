@@ -1966,9 +1966,9 @@ class AutoTradingService:
             tp_order_id = None
             sl_order_id = None
             if res.get("tp"):
-                tp_order_id = res["tp"]["orderId"]
+                tp_order_id = res["tp"].get("orderId")
             if res.get("sl"):
-                sl_order_id = res["sl"]["orderId"]
+                sl_order_id = res["sl"].get("orderId")
             
             self.brackets[symbol] = {
                 "symbol": symbol,

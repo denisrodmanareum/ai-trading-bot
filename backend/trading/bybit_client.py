@@ -174,8 +174,10 @@ class BybitClient(BaseExchangeClient):
         return await self._request("POST", "/v5/order/create", params, signed=True)
 
     async def place_bracket_orders(self, symbol: str, position_side: str, quantity: float, stop_loss_price: Optional[float], take_profit_price: Optional[float]) -> Dict:
-        """Place SL/TP orders (Bybit can set these during order creation or separately)"""
-        # Implementing separate update for simplicity here
+        """
+        Place SL/TP orders (Bybit V5 set-tpsl)
+        Standardized to return {"sl": {"orderId": ...}, "tp": {"orderId": ...}}
+        """
         params = {
             "category": "linear",
             "symbol": symbol,
@@ -184,7 +186,16 @@ class BybitClient(BaseExchangeClient):
             "tpOrderType": "Market",
             "slOrderType": "Market",
         }
-        return await self._request("POST", "/v5/position/set-tpsl", params, signed=True)
+        resp = await self._request("POST", "/v5/position/set-tpsl", params, signed=True)
+        
+        # Standardize for AutoTradingService compatibility
+        results = {"sl": None, "tp": None}
+        if resp.get("retCode") == 0:
+            if stop_loss_price:
+                results["sl"] = {"orderId": "bybit_sl_pos"}
+            if take_profit_price:
+                results["tp"] = {"orderId": "bybit_tp_pos"}
+        return results
 
     async def cancel_open_orders(self, symbol: str) -> int:
         """Cancel all orders for symbol"""
