@@ -357,7 +357,7 @@ class AutoTradingService:
             logger.info("Creating new initial AI model...")
             
             # 1. Fetch historical data for environment
-            df = await self.binance_client.get_klines("BTCUSDT", interval="1h", limit=1000)
+            df = await self.exchange_client.get_klines("BTCUSDT", interval="1h", limit=1000)
             from ai.features import add_technical_indicators
             df = add_technical_indicators(df)
             
@@ -390,7 +390,7 @@ class AutoTradingService:
         
         # Initialize Daily Balance for Risk Calc
         try:
-            account = await self.binance_client.get_account_info()
+            account = await self.exchange_client.get_account_info()
             self.daily_start_balance = account['balance']
             if self.bot_start_balance is None:
                 self.bot_start_balance = account['balance']
@@ -591,7 +591,7 @@ class AutoTradingService:
             self.processing = True
             try:
                 # RISK CHECK BEFORE TRADING
-                account = await self.binance_client.get_account_info()
+                account = await self.exchange_client.get_account_info()
                 if account is None:
                     logger.warning("Could not fetch account info for risk check, skipping.")
                     return
@@ -623,7 +623,7 @@ class AutoTradingService:
         # This was causing double-filtering
         
         # 1. Get current position
-        position = await self.binance_client.get_position(symbol)
+        position = await self.exchange_client.get_position(symbol)
         if position is None:
             logger.warning(f"Could not fetch position for {symbol}, skipping trade logic.")
             return
@@ -686,7 +686,7 @@ class AutoTradingService:
         # 1. Fetch data based on selected interval (For Strategy & AI)
         trading_interval = self.strategy_config.selected_interval
         logger.info(f"🔄 Trading Mode: {self.strategy_config.mode} | Interval: {trading_interval} | Symbol: {symbol}")
-        df = await self.binance_client.get_klines(symbol, interval=trading_interval, limit=300)
+        df = await self.exchange_client.get_klines(symbol, interval=trading_interval, limit=300)
         
         # 🔧 Validate data
         if df is None or len(df) < 50:
@@ -697,7 +697,7 @@ class AutoTradingService:
         
         # 2. Fetch 1M Data (For Spike Detection)
         # We need recent 1m candles to detect sudden moves
-        df_1m_raw = await self.binance_client.get_klines(symbol, interval='1m', limit=30)
+        df_1m_raw = await self.exchange_client.get_klines(symbol, interval='1m', limit=30)
         df_1m = pd.DataFrame(df_1m_raw, columns=[
             'timestamp', 'open', 'high', 'low', 'close', 'volume',
             'close_time', 'quote_volume', 'trades', 'taker_buy_base',
@@ -900,7 +900,7 @@ class AutoTradingService:
                      # 1. Current leverage is different from desired leverage
                      # 2. No open position (Binance doesn't allow leverage change with open position)
                      if current_leverage != leverage and position_size == 0:
-                         result = await self.binance_client.change_leverage(symbol, leverage)
+                         result = await self.exchange_client.change_leverage(symbol, leverage)
                          if result is not None:
                              logger.info(f"✓ Leverage changed: {current_leverage} -> {leverage}")
                          else:
@@ -999,11 +999,11 @@ class AutoTradingService:
         # 🔧 STEP 1: Check Total Position Exposure (NEW!)
         if action in [1, 2] and current_amt == 0:  # New position entry
             try:
-                account = await self.binance_client.get_account_info()
+                account = await self.exchange_client.get_account_info()
                 current_balance = account['balance']
                 
                 # Calculate current total exposure from all positions
-                positions = await self.binance_client.get_all_positions()
+                positions = await self.exchange_client.get_all_positions()
                 total_notional = 0.0
                 active_positions = 0
                 long_positions = 0
@@ -1098,7 +1098,7 @@ class AutoTradingService:
         async def _round_quantity(sym: str, qty: float):
             try:
                 # 1. Fetch exchange info for precision
-                info = await self.binance_client.get_exchange_info()
+                info = await self.exchange_client.get_exchange_info()
                 if not info or 'symbols' not in info:
                     return round(qty, 3) # Hand-wave fallback
                 
@@ -1120,7 +1120,7 @@ class AutoTradingService:
         # Quantity logic - 🔧 ENHANCED: AI Adaptive position sizing
         # 1. Calculate Base Target Notional Value
         try:
-            account = await self.binance_client.get_account_info()
+            account = await self.exchange_client.get_account_info()
             current_balance = account['balance']
         except:
             current_balance = 5000.0  # Fallback
@@ -1239,7 +1239,7 @@ class AutoTradingService:
                             logger.warning(f"⚠️ FLIP 제한: {symbol} SHORT→LONG 전환 불가 (최소 보유 시간 또는 신호 강도 부족)")
                             return
                         
-                        close_order = await self.binance_client.place_market_order(symbol, "BUY", abs(current_amt), reduce_only=True)
+                        close_order = await self.exchange_client.place_market_order(symbol, "BUY", abs(current_amt), reduce_only=True)
                         await self._handle_close_notification(
                              symbol=symbol,
                              position=position,
@@ -1287,7 +1287,7 @@ class AutoTradingService:
                             logger.warning(f"⚠️ FLIP 제한: {symbol} LONG→SHORT 전환 불가 (최소 보유 시간 또는 신호 강도 부족)")
                             return
                         
-                        close_order = await self.binance_client.place_market_order(symbol, "SELL", abs(current_amt), reduce_only=True)
+                        close_order = await self.exchange_client.place_market_order(symbol, "SELL", abs(current_amt), reduce_only=True)
                         await self._handle_close_notification(
                              symbol=symbol,
                              position=position,
@@ -1329,7 +1329,7 @@ class AutoTradingService:
             elif action == 3: # CLOSE
                 if current_amt != 0:
                     side = "SELL" if current_amt > 0 else "BUY"
-                    order = await self.binance_client.place_market_order(symbol, side, abs(current_amt), reduce_only=True)
+                    order = await self.exchange_client.place_market_order(symbol, side, abs(current_amt), reduce_only=True)
                     logger.info("Closed Position")
                     await self._broadcast_trade("CLOSE", symbol, abs(current_amt), order)
                     await self._handle_close_notification(
@@ -1453,7 +1453,7 @@ class AutoTradingService:
         try:
             # 1. 고TF 데이터 (1h 또는 4h)
             high_tf = '1h' if self.strategy_config.mode == 'SCALP' else '4h'
-            df_high = await self.binance_client.get_klines(symbol, interval=high_tf, limit=300)
+            df_high = await self.exchange_client.get_klines(symbol, interval=high_tf, limit=300)
             if df_high is None or len(df_high) < 100:
                 logger.warning(f"SMC: 고TF 데이터 부족 ({high_tf})")
                 return None
@@ -1463,7 +1463,7 @@ class AutoTradingService:
             
             # 2. 하위TF 데이터 (15m 또는 5m)
             low_tf = '15m' if self.strategy_config.mode == 'SCALP' else '30m'
-            df_low = await self.binance_client.get_klines(symbol, interval=low_tf, limit=200)
+            df_low = await self.exchange_client.get_klines(symbol, interval=low_tf, limit=200)
             if df_low is None or len(df_low) < 50:
                 logger.warning(f"SMC: 하위TF 데이터 부족 ({low_tf})")
                 return None
@@ -1533,7 +1533,7 @@ class AutoTradingService:
             # 수량 계산
             async def _round_quantity(sym: str, qty: float):
                 try:
-                    info = await self.binance_client.get_exchange_info()
+                    info = await self.exchange_client.get_exchange_info()
                     if not info or 'symbols' not in info:
                         return round(qty, 3)
                     
@@ -1551,7 +1551,7 @@ class AutoTradingService:
             
             # 목표 금액 - 🔧 Use same adaptive logic as main trading
             try:
-                account = await self.binance_client.get_account_info()
+                account = await self.exchange_client.get_account_info()
                 current_balance = account['balance']
             except:
                 current_balance = 5000.0
@@ -1584,7 +1584,7 @@ class AutoTradingService:
                 position_size = abs(float(position.get('position_amt', 0)))
                 
                 if current_leverage != leverage and position_size == 0:
-                    result = await self.binance_client.change_leverage(symbol, leverage)
+                    result = await self.exchange_client.change_leverage(symbol, leverage)
                     if result is not None:
                         logger.info(f"✓ 레버리지 변경: {current_leverage} -> {leverage}")
                     else:
@@ -1597,7 +1597,7 @@ class AutoTradingService:
             # 주문 실행
             if action == 1:  # LONG
                 if current_amt < 0:  # SHORT 포지션 청산
-                    close_order = await self.binance_client.place_market_order(symbol, "BUY", abs(current_amt), reduce_only=True)
+                    close_order = await self.exchange_client.place_market_order(symbol, "BUY", abs(current_amt), reduce_only=True)
                     await self._handle_close_notification(
                         symbol=symbol,
                         position=position,
@@ -1607,13 +1607,13 @@ class AutoTradingService:
                     )
                 
                 # LONG 진입
-                order = await self.binance_client.place_market_order(symbol, "BUY", quantity)
+                order = await self.exchange_client.place_market_order(symbol, "BUY", quantity)
                 logger.info(f"🎯 SMC LONG 진입: {symbol} @ {entry_price:.2f}")
                 await self._broadcast_trade("LONG", symbol, quantity, order)
                 
                 # TP/SL 설정 (SMC 신호 사용)
                 try:
-                    res = await self.binance_client.place_bracket_orders(
+                    res = await self.exchange_client.place_bracket_orders(
                         symbol=symbol,
                         position_side="LONG",
                         quantity=float(quantity),
@@ -1649,7 +1649,7 @@ class AutoTradingService:
             
             elif action == 2:  # SHORT
                 if current_amt > 0:  # LONG 포지션 청산
-                    close_order = await self.binance_client.place_market_order(symbol, "SELL", abs(current_amt), reduce_only=True)
+                    close_order = await self.exchange_client.place_market_order(symbol, "SELL", abs(current_amt), reduce_only=True)
                     await self._handle_close_notification(
                         symbol=symbol,
                         position=position,
@@ -1659,13 +1659,13 @@ class AutoTradingService:
                     )
                 
                 # SHORT 진입
-                order = await self.binance_client.place_market_order(symbol, "SELL", quantity)
+                order = await self.exchange_client.place_market_order(symbol, "SELL", quantity)
                 logger.info(f"🎯 SMC SHORT 진입: {symbol} @ {entry_price:.2f}")
                 await self._broadcast_trade("SHORT", symbol, quantity, order)
                 
                 # TP/SL 설정
                 try:
-                    res = await self.binance_client.place_bracket_orders(
+                    res = await self.exchange_client.place_bracket_orders(
                         symbol=symbol,
                         position_side="SHORT",
                         quantity=float(quantity),
@@ -1926,7 +1926,7 @@ class AutoTradingService:
 
         # Place bracket orders (best-effort)
         try:
-            res = await self.binance_client.place_bracket_orders(
+            res = await self.exchange_client.place_bracket_orders(
                 symbol=symbol,
                 position_side=side,
                 quantity=float(quantity),
@@ -2061,7 +2061,7 @@ class AutoTradingService:
         # 🆕 1. 부분 청산 체크
         try:
             exit_result = await self.partial_exit_manager.check_partial_exits(
-                symbol, bracket, current_price, self.binance_client
+                symbol, bracket, current_price, self.exchange_client
             )
             
             if exit_result:
@@ -2072,7 +2072,7 @@ class AutoTradingService:
                 
                 # 첫 익절 후 본전 SL 설정
                 if self.partial_exit_manager.should_set_breakeven(symbol):
-                    await move_sl_to_breakeven(self.binance_client, self.brackets, symbol, entry_price)
+                    await move_sl_to_breakeven(self.exchange_client, self.brackets, symbol, entry_price)
                     self.partial_exit_manager.mark_breakeven_set(symbol)
         except Exception as e:
             logger.error(f"Partial exit check failed for {symbol}: {e}")
@@ -2080,7 +2080,7 @@ class AutoTradingService:
         # 🆕 2. Trailing SL 체크 (수익 나고 있을 때)
         try:
             await update_trailing_stop_loss(
-                self.binance_client, self.brackets, symbol, current_price, entry_price, side, bracket
+                self.exchange_client, self.brackets, symbol, current_price, entry_price, side, bracket
             )
         except Exception as e:
             logger.error(f"Trailing SL update failed for {symbol}: {e}")
@@ -2115,11 +2115,11 @@ class AutoTradingService:
                     try:
                         # 기존 익절 주문 취소
                         if bracket.get("tp_order_id"):
-                            await self.binance_client.cancel_order(symbol, bracket["tp_order_id"])
+                            await self.exchange_client.cancel_order(symbol, bracket["tp_order_id"])
                         
                         # 새 익절 주문 생성
                         qty = bracket.get("qty", 0)
-                        new_tp_order = await self.binance_client.place_limit_order(
+                        new_tp_order = await self.exchange_client.place_limit_order(
                             symbol=symbol,
                             side="SELL",
                             quantity=qty,
@@ -2162,11 +2162,11 @@ class AutoTradingService:
                     try:
                         # 기존 익절 주문 취소
                         if bracket.get("tp_order_id"):
-                            await self.binance_client.cancel_order(symbol, bracket["tp_order_id"])
+                            await self.exchange_client.cancel_order(symbol, bracket["tp_order_id"])
                         
                         # 새 익절 주문 생성
                         qty = bracket.get("qty", 0)
-                        new_tp_order = await self.binance_client.place_limit_order(
+                        new_tp_order = await self.exchange_client.place_limit_order(
                             symbol=symbol,
                             side="BUY",
                             quantity=abs(qty),
@@ -2207,7 +2207,7 @@ class AutoTradingService:
 
         # Cancel any remaining open orders
         try:
-            await self.binance_client.cancel_open_orders(symbol)
+            await self.exchange_client.cancel_open_orders(symbol)
         except Exception:
             pass
 
@@ -2340,7 +2340,7 @@ class AutoTradingService:
 
         # Cancel remaining TP/SL orders for this symbol after closing the position
         try:
-            await self.binance_client.cancel_open_orders(symbol)
+            await self.exchange_client.cancel_open_orders(symbol)
         except Exception:
             pass
 
@@ -2375,7 +2375,7 @@ class AutoTradingService:
 
         # Append quick risk summary (best effort)
         try:
-            account = await self.binance_client.get_account_info()
+            account = await self.exchange_client.get_account_info()
             bal = float(account.get("balance", 0))
             daily_pnl = bal - float(self.daily_start_balance or bal)
             margin_ratio = 0.0
@@ -2465,7 +2465,7 @@ class AutoTradingService:
         if not notification_manager.enabled_channels.get("telegram", False):
             return
         try:
-            account = await self.binance_client.get_account_info()
+            account = await self.exchange_client.get_account_info()
             bal = float(account.get("balance", 0))
             if self.bot_start_balance is None:
                 self.bot_start_balance = bal
