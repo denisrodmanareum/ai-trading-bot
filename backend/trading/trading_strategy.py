@@ -6,11 +6,16 @@ class StochasticTradingStrategy:
     """
     Stochastic Triple Trading Strategy
     """
-    def __init__(self):
-        self.oversold = 25
-        self.overbought = 75
-        self.rsi_oversold = 30
-        self.rsi_overbought = 70
+    def __init__(self, config: dict = None):
+        config = config or {}
+        self.oversold = config.get('oversold', 25)
+        self.overbought = config.get('overbought', 75)
+        self.rsi_oversold = config.get('rsi_oversold', 30)
+        self.rsi_overbought = config.get('rsi_overbought', 70)
+        
+        # Other configurable params
+        self.volume_spike_mult = config.get('volume_spike_mult', 2.0)
+        self.ema_period = config.get('ema_period', 200)
 
     def check_momentum(self, df: pd.DataFrame):
         """

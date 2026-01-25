@@ -516,18 +516,31 @@ function TradingPerfect() {
                   {activeBottomTab === 'orders' && orders.map((o, i) => {
                     const oid = o.orderId || o.order_id;
                     const qty = o.origQty || o.orig_qty || o.quantity;
-                    const p = o.price || o.limitPrice;
+
+                    // Trigger orders (SL/TP) have price 0 but stopPrice set
+                    const isTriggerOrder = o.type === 'STOP_MARKET' || o.type === 'TAKE_PROFIT_MARKET';
+                    const displayPrice = isTriggerOrder ? o.stopPrice : (parseFloat(o.price) > 0 ? o.price : 'Market');
+
+                    // Human readable type
+                    const readableType = {
+                      'LIMIT': 'Limit',
+                      'MARKET': 'Market',
+                      'STOP_MARKET': 'Stop Loss (Trigger)',
+                      'TAKE_PROFIT_MARKET': 'Take Profit (Trigger)'
+                    }[o.type] || o.type;
+
                     return (
                       <tr key={i} style={{ borderBottom: '1px solid #111' }}>
                         <td style={{ padding: '10px 14px' }}>
                           <span style={{ fontWeight: '800' }}>{o.symbol}</span>
                         </td>
-                        <td style={{ padding: '10px', color: '#aaa' }}>{o.type}</td>
+                        <td style={{ padding: '10px', color: '#aaa' }}>{readableType}</td>
                         <td style={{ padding: '10px' }}>
-                          <span style={{ color: o.side === 'BUY' ? '#00b07c' : '#ff4b4b', fontWeight: '800' }}>{o.side}</span>
+                          <span style={{ color: o.side === 'BUY' ? '#00b07c' : '#ff4b4b', fontWeight: '800' }}>{o.side === 'BUY' ? 'LONG' : 'SHORT'}</span>
                         </td>
-                        <td style={{ padding: '10px', fontFamily: 'monospace', color: '#f0b90b' }}>{Number(p).toLocaleString()}</td>
-                        <td style={{ padding: '10px', fontFamily: 'monospace' }}>{qty}</td>
+                        <td style={{ padding: '10px', fontFamily: 'monospace', color: isTriggerOrder ? '#f0b90b' : '#eee' }}>{displayPrice}</td>
+                        <td style={{ padding: '10px', fontFamily: 'monospace' }}>{parseFloat(qty) === 0 ? 'POSITION' : qty}</td>
+
                         <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                           <button
                             onClick={() => handleCancelOrder(oid, o.symbol)}

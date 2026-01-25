@@ -168,7 +168,9 @@ class CircuitBreaker:
         """Record trade result"""
         if pnl_pct < 0:
             self.recent_losses.append((time.time(), abs(pnl_pct)))
-            self._cleanup()
+            # Clean up old records (older than max window)
+            max_window = max(t['window'] for t in self.tiers)
+            self._cleanup(max_window)
         
     def _cleanup(self, window_minutes: int):
         """Remove old records beyond window"""
@@ -316,6 +318,27 @@ class AutoTradingService:
                     latest_model = os.path.join(model_dir, sorted(models)[-1])
                     self.agent.load_model(latest_model)
                     logger.info(f"AutoTrading: Loaded model {latest_model}")
+                    
+                    # 🆕 Hybrid AI 초기화
+                    try:
+                        self.hybrid_ai.ppo_agent = self.agent
+                        self.hybrid_ai.mode = "ppo_only"
+                        
+                        # 최신 LSTM 모델 찾기 (현재 interval 기준)
+                        import glob
+                        symbol = "BTCUSDT" # Default or dynamic
+                        interval = self.strategy_config.selected_interval
+                        lstm_pattern = os.path.join(settings.AI_MODEL_PATH, f"lstm_{symbol}_{interval}_*.pt")
+                        lstm_models = sorted(glob.glob(lstm_pattern))
+                        
+                        if lstm_models:
+                            latest_lstm = lstm_models[-1]
+                            self.hybrid_ai.load_lstm(latest_lstm)
+                            logger.info(f"✅ Hybrid AI: LSTM model loaded for {interval}")
+                        else:
+                            logger.warning(f"⚠️ Hybrid AI: No LSTM model found for {interval}")
+                    except Exception as he:
+                        logger.error(f"Hybrid AI initialization failed: {he}")
                 else:
                     logger.warning("AutoTrading: No trained models found, creating new one...")
                     await self._create_new_model()
@@ -744,10 +767,15 @@ class AutoTradingService:
         logger.info(analysis_msg)
         # -------------------------------------
         
-        # 4. AI Prediction (AI acts as FILTER/VALIDATOR) - 🔧 Now with confidence!
-        ai_action, ai_confidence = self.agent.live_predict(market_state)
+        # 4. AI Prediction (Hybrid AI: PPO + LSTM 결합)
+        # 🔧 Now using HybridAI with PPO + LSTM synergy
+        if self.hybrid_ai and (self.hybrid_ai.ppo_agent or self.hybrid_ai.lstm_predictor):
+            ai_action, ai_confidence = await self.hybrid_ai.predict(market_state)
+        else:
+            ai_action, ai_confidence = self.agent.live_predict(market_state)
+            
         ai_action_name = ["HOLD", "LONG", "SHORT", "CLOSE"][ai_action]
-        logger.info(f"🤖 AI Prediction: {ai_action_name} (Confidence: {ai_confidence:.2%})")
+        logger.info(f"🤖 AI Prediction (Hybrid): {ai_action_name} (Confidence: {ai_confidence:.2%})")
         
         # 5. Tech Signal (Rules are the CAPTAIN)
         logger.info(f"🔍 Checking technical signals for {symbol}...")
@@ -864,7 +892,7 @@ class AutoTradingService:
                  # Apply Dynamic Leverage (only if no position and different from current)
                  try:
                      current_leverage = position.get('leverage', 5)
-                     position_size = abs(float(position.get('positionAmt', 0)))
+                     position_size = abs(float(position.get('position_amt', 0)))
                      
                      # Only try to change leverage if:
                      # 1. Current leverage is different from desired leverage
@@ -973,16 +1001,16 @@ class AutoTradingService:
                 current_balance = account['balance']
                 
                 # Calculate current total exposure from all positions
-                positions = await self.binance_client.get_positions()
+                positions = await self.binance_client.get_all_positions()
                 total_notional = 0.0
                 active_positions = 0
                 long_positions = 0
                 short_positions = 0
                 
                 for pos in positions:
-                    pos_amt = float(pos.get('positionAmt', 0))
+                    pos_amt = float(pos.get('position_amt', 0))
                     if abs(pos_amt) > 0:
-                        entry_price = float(pos.get('entryPrice', 0))
+                        entry_price = float(pos.get('entry_price', 0))
                         notional = abs(pos_amt * entry_price)
                         total_notional += notional
                         active_positions += 1
@@ -1040,7 +1068,7 @@ class AutoTradingService:
                         diversification = await self.portfolio_manager.check_diversification(
                             symbol, 
                             "LONG" if action == 1 else "SHORT",
-                            [p for p in positions if abs(float(p.get('positionAmt', 0))) > 0]
+                            [p for p in positions if abs(float(p.get('position_amt', 0))) > 0]
                         )
                         
                         if not diversification['is_diversified']:
@@ -1551,7 +1579,7 @@ class AutoTradingService:
             
             try:
                 current_leverage = position.get('leverage', 5)
-                position_size = abs(float(position.get('positionAmt', 0)))
+                position_size = abs(float(position.get('position_amt', 0)))
                 
                 if current_leverage != leverage and position_size == 0:
                     result = await self.binance_client.change_leverage(symbol, leverage)

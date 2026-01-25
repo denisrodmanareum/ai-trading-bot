@@ -1,6 +1,13 @@
 """
 Main FastAPI Application
 """
+import sys
+import asyncio
+
+# 🔧 FIX: Windows ProactorEventLoop issues with pycares/aiohttp
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
