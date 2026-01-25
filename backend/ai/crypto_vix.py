@@ -17,7 +17,6 @@ class CryptoVIX:
     
     def __init__(self, exchange_client):
         self.exchange_client = exchange_client
-        self.binance_client = exchange_client
         self.current_vix = 0.0
         self.vix_history = []
     

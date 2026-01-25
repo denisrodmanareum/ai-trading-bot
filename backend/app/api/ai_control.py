@@ -747,6 +747,7 @@ async def get_improvement_suggestions():
 @router.get("/weekly-summary")
 async def get_weekly_summary():
     """Get weekly performance summary"""
+    try:
         # Calculate weekly stats from trade history
         from trading.exchange_factory import ExchangeFactory
         

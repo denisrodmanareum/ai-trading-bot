@@ -14,7 +14,7 @@ class AutoImprover:
     """AI 자동 개선 시스템"""
     
     def __init__(self, exchange_client: BaseExchangeClient):
-        self.binance_client = exchange_client
+        self.exchange_client = exchange_client
         self.enabled = False
         self.last_training = None
         self.performance_history = []

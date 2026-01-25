@@ -219,17 +219,14 @@ class CircuitBreaker:
         return False
 
 # Helper to get the correct exchange client
+# Helper to get the correct exchange client
 async def get_exchange_client():
     from trading.exchange_factory import ExchangeFactory
     return await ExchangeFactory.get_client()
 
-# Alias for backward compatibility
-get_binance_client = get_exchange_client
-
 class AutoTradingService:
     
     def __init__(self, exchange_client: BaseExchangeClient, ws_manager: WebSocketManager = None):
-        self.binance_client = exchange_client # Keep variable name for minimal diff if preferred, or rename to exchange_client
         self.exchange_client = exchange_client
         self.ws_manager = ws_manager
         self.agent: Optional[TradingAgent] = None

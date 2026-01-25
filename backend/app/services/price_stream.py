@@ -16,7 +16,6 @@ class PriceStreamService:
     
     def __init__(self, exchange_client: BaseExchangeClient, ws_manager: WebSocketManager):
         self.exchange_client = exchange_client
-        self.binance_client = exchange_client # Fallback for old refs
         self.ws_manager = ws_manager
         self.bm: Optional[BinanceSocketManager] = None
         self.running = False

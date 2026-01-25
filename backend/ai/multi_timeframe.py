@@ -36,8 +36,8 @@ class MultiTimeframeAnalyzer:
     - Lower timeframes provide entry/exit timing
     """
     
-    def __init__(self, binance_client=None):
-        self.binance_client = binance_client
+    def __init__(self, exchange_client=None):
+        self.exchange_client = exchange_client
         self.timeframes = ['1d', '4h', '1h', '15m']
         self.timeframe_weights = {
             '1d': 0.40,   # Highest weight

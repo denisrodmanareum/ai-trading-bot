@@ -19,7 +19,6 @@ class PortfolioManager:
     
     def __init__(self, exchange_client):
         self.exchange_client = exchange_client
-        self.binance_client = exchange_client # Fallback
         self.correlation_cache = {}  # symbol_pair -> correlation
         self.last_update = None
         self.cache_duration = timedelta(hours=1)  # 1시간마다 갱신

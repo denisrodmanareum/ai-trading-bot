@@ -19,7 +19,6 @@ class PerformanceMonitor:
     
     def __init__(self, exchange_client, auto_trading_service=None):
         self.exchange_client = exchange_client
-        self.binance_client = exchange_client
         self.auto_trading_service = auto_trading_service
         
         # 베이스라인 (목표 성과)
