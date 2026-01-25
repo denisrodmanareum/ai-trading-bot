@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from trading.binance_client import BinanceClient
+from trading.exchange_factory import ExchangeFactory
 from ai.daily_review import DailyReviewAnalyzer
 from ai.stop_loss_ai import StopLossTakeProfitAI
 from ai.agent import TradingAgent
@@ -33,11 +33,10 @@ async def analyze_positions(db: Session = Depends(get_db)):
     Returns recommendations for each position
     """
     try:
-        from app.services.auto_trading import get_binance_client
-        binance_client = get_binance_client()
+        exchange_client = await ExchangeFactory.get_client()
         
         # Get current positions
-        positions = await binance_client.get_all_positions()
+        positions = await exchange_client.get_all_positions()
         active_positions = [p for p in positions if abs(p['position_amt']) > 0]
         
         if not active_positions:
@@ -49,15 +48,11 @@ async def analyze_positions(db: Session = Depends(get_db)):
         
         analysis_results = []
         
-        for position in active_positions:
-            symbol = position['symbol']
-            
             try:
                 # Fetch market data
-                klines = await binance_client.get_klines(symbol, '15m', limit=100)
+                df = await exchange_client.get_klines(symbol, '15m', limit=100)
                 
-                import pandas as pd
-                df = pd.DataFrame(klines, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume', 'close_time', 'quote_volume', 'trades', 'taker_buy_base', 'taker_buy_quote', 'ignore'])
+                # df is already a processed DataFrame from get_klines in our clients
                 df['close'] = df['close'].astype(float)
                 df['high'] = df['high'].astype(float)
                 df['low'] = df['low'].astype(float)

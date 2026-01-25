@@ -14,16 +14,11 @@ from contextlib import asynccontextmanager
 from loguru import logger
 from pathlib import Path
 
-# Binance Client 초기화
-from trading.binance_client import BinanceClient
+from trading.exchange_factory import ExchangeFactory
 from app.core.config import settings
 
-# Global binance client
-from app.services.websocket_manager import WebSocketManager
-from app.services.price_stream import PriceStreamService
-from app.services.auto_trading import AutoTradingService
-
-binance_client = None
+# Global client
+exchange_client = None
 ws_manager = WebSocketManager()
 price_service = None
 auto_trading_service = None
@@ -43,15 +38,14 @@ async def lifespan(app: FastAPI):
         await init_db()
         logger.info("Database initialized")
 
-        binance_client = BinanceClient()
-        await binance_client.initialize()
-        logger.info("Binance client initialized")
+        exchange_client = await ExchangeFactory.get_client()
+        logger.info(f"{settings.ACTIVE_EXCHANGE} client initialized")
         
         # Initialize Price Stream Service
-        price_service = PriceStreamService(binance_client, ws_manager)
+        price_service = PriceStreamService(exchange_client, ws_manager)
         
         # Initialize Auto Trading Service
-        auto_trading_service = AutoTradingService(binance_client, ws_manager)
+        auto_trading_service = AutoTradingService(exchange_client, ws_manager)
         
         # Start Auto Trading Service Automaticaly (Delayed to prevent blocking startup)
         import asyncio

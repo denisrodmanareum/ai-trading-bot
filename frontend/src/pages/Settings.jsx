@@ -40,8 +40,11 @@ function Settings() {
 
   // API Config States
   const [apiConfig, setApiConfig] = useState({
-    api_key: '',
-    api_secret: '',
+    active_exchange: 'BINANCE',
+    binance_key: '',
+    binance_secret: '',
+    bybit_key: '',
+    bybit_secret: '',
     testnet: false
   });
 
@@ -120,8 +123,11 @@ function Settings() {
       if (res.ok) {
         const data = await res.json();
         setApiConfig({
-          api_key: data.api_key || '',
-          api_secret: data.api_secret || '', // Likely masked or empty
+          active_exchange: data.active_exchange || 'BINANCE',
+          binance_key: data.binance_key || '',
+          binance_secret: '',
+          bybit_key: data.bybit_key || '',
+          bybit_secret: '',
           testnet: !!data.testnet
         });
       }
@@ -134,8 +140,11 @@ function Settings() {
     setSaving(true);
     try {
       const payload = {
-        api_key: apiConfig.api_key,
-        api_secret: apiConfig.api_secret,
+        active_exchange: apiConfig.active_exchange,
+        binance_key: apiConfig.binance_key,
+        binance_secret: apiConfig.binance_secret || undefined,
+        bybit_key: apiConfig.bybit_key,
+        bybit_secret: apiConfig.bybit_secret || undefined,
         testnet: apiConfig.testnet
       };
 
@@ -694,20 +703,49 @@ function Settings() {
             padding: '1.5rem'
           }}>
             <h3 style={{ fontSize: '1rem', fontWeight: '800', marginBottom: '1rem', color: '#fff' }}>
-              API Configuration
+              Exchange & API Configuration
             </h3>
             <p style={{ fontSize: '0.8rem', color: '#666', marginBottom: '1.5rem' }}>
-              Binance API 키 설정 (변경 시 봇이 재시작됩니다)
+              사용할 거래소와 API 키를 설정하세요 (변경 시 봇이 재시작됩니다)
             </p>
 
             <div style={{ display: 'grid', gap: '1.5rem' }}>
+
+              {/* Active Exchange Selector */}
+              <div style={{ background: '#000', padding: '1.2rem', borderRadius: '4px', border: '1px solid #222' }}>
+                <label style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.8rem', display: 'block', fontWeight: '800' }}>
+                  ACTIVE EXCHANGE (활성 거래소)
+                </label>
+                <div style={{ display: 'flex', gap: '1rem' }}>
+                  {['BINANCE', 'BYBIT'].map(ex => (
+                    <button
+                      key={ex}
+                      onClick={() => setApiConfig({ ...apiConfig, active_exchange: ex })}
+                      style={{
+                        flex: 1,
+                        padding: '1rem',
+                        background: apiConfig.active_exchange === ex ? 'rgba(240, 185, 11, 0.1)' : '#0a0a0a',
+                        border: `1px solid ${apiConfig.active_exchange === ex ? '#f0b90b' : '#222'}`,
+                        color: apiConfig.active_exchange === ex ? '#f0b90b' : '#666',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: '900',
+                        fontSize: '0.9rem',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      {ex}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* Testnet Toggle */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#000', padding: '1rem', borderRadius: '2px', border: '1px solid #222' }}>
                 <div>
                   <div style={{ fontSize: '0.9rem', fontWeight: '900', color: '#fff' }}>Testnet Mode</div>
                   <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
-                    실제 자산이 아닌 테스트넷 환경 사용
+                    실제 자산이 아닌 테스트넷 환경 사용 (Binance/Bybit 공통 적용)
                   </div>
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
@@ -717,58 +755,63 @@ function Settings() {
                     onChange={(e) => setApiConfig({ ...apiConfig, testnet: e.target.checked })}
                   />
                   <span style={{ color: apiConfig.testnet ? '#f0b90b' : '#666', fontSize: '0.85rem', fontWeight: '800' }}>
-                    {apiConfig.testnet ? 'TESTNET' : 'MAINNET'}
+                    {apiConfig.testnet ? 'TESTNET ON' : 'MAINNET'}
                   </span>
                 </label>
               </div>
 
-              {/* API Key */}
-              <div>
-                <label style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.5rem', display: 'block' }}>
-                  Binance API Key
-                </label>
-                <input
-                  type="text"
-                  value={apiConfig.api_key}
-                  onChange={(e) => setApiConfig({ ...apiConfig, api_key: e.target.value })}
-                  placeholder="Insert API Key"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    background: '#0a0a0a',
-                    border: '1px solid #222',
-                    borderRadius: '2px',
-                    color: '#fff',
-                    fontSize: '0.85rem',
-                    fontFamily: 'monospace'
-                  }}
-                />
+              {/* Binance Section */}
+              <div style={{ border: '1px solid #1a1a1a', padding: '1.2rem', borderRadius: '4px', background: '#080808' }}>
+                <h4 style={{ color: '#f0b90b', fontSize: '0.85rem', marginBottom: '1rem' }}>BINANCE SETTINGS</h4>
+                <div style={{ display: 'grid', gap: '1rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.65rem', color: '#444', marginBottom: '0.4rem', display: 'block' }}>API KEY</label>
+                    <input
+                      type="text"
+                      value={apiConfig.binance_key}
+                      onChange={(e) => setApiConfig({ ...apiConfig, binance_key: e.target.value })}
+                      placeholder="Binance API Key"
+                      style={{ width: '100%', padding: '0.75rem', background: '#000', border: '1px solid #222', borderRadius: '2px', color: '#fff', fontSize: '0.8rem', fontFamily: 'monospace' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.65rem', color: '#444', marginBottom: '0.4rem', display: 'block' }}>API SECRET</label>
+                    <input
+                      type="password"
+                      value={apiConfig.binance_secret}
+                      onChange={(e) => setApiConfig({ ...apiConfig, binance_secret: e.target.value })}
+                      placeholder="Insert Secret Key (Hidden)"
+                      style={{ width: '100%', padding: '0.75rem', background: '#000', border: '1px solid #222', borderRadius: '2px', color: '#fff', fontSize: '0.8rem', fontFamily: 'monospace' }}
+                    />
+                  </div>
+                </div>
               </div>
 
-              {/* API Secret */}
-              <div>
-                <label style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.5rem', display: 'block' }}>
-                  Binance Secret Key
-                </label>
-                <input
-                  type="password"
-                  value={apiConfig.api_secret}
-                  onChange={(e) => setApiConfig({ ...apiConfig, api_secret: e.target.value })}
-                  placeholder="Insert Secret Key (Hidden)"
-                  style={{
-                    width: '100%',
-                    padding: '0.75rem',
-                    background: '#0a0a0a',
-                    border: '1px solid #222',
-                    borderRadius: '2px',
-                    color: '#fff',
-                    fontSize: '0.85rem',
-                    fontFamily: 'monospace'
-                  }}
-                />
-                <p style={{ fontSize: '0.7rem', color: '#444', marginTop: '0.5rem' }}>
-                  보안을 위해 기존 Secret Key는 표시되지 않으며, 변경 시에만 입력하세요.
-                </p>
+              {/* Bybit Section */}
+              <div style={{ border: '1px solid #1a1a1a', padding: '1.2rem', borderRadius: '4px', background: '#080808' }}>
+                <h4 style={{ color: '#ff9d00', fontSize: '0.85rem', marginBottom: '1rem' }}>BYBIT SETTINGS</h4>
+                <div style={{ display: 'grid', gap: '1rem' }}>
+                  <div>
+                    <label style={{ fontSize: '0.65rem', color: '#444', marginBottom: '0.4rem', display: 'block' }}>API KEY</label>
+                    <input
+                      type="text"
+                      value={apiConfig.bybit_key}
+                      onChange={(e) => setApiConfig({ ...apiConfig, bybit_key: e.target.value })}
+                      placeholder="Bybit API Key"
+                      style={{ width: '100%', padding: '0.75rem', background: '#000', border: '1px solid #222', borderRadius: '2px', color: '#fff', fontSize: '0.8rem', fontFamily: 'monospace' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '0.65rem', color: '#444', marginBottom: '0.4rem', display: 'block' }}>API SECRET</label>
+                    <input
+                      type="password"
+                      value={apiConfig.bybit_secret}
+                      onChange={(e) => setApiConfig({ ...apiConfig, bybit_secret: e.target.value })}
+                      placeholder="Insert Secret Key (Hidden)"
+                      style={{ width: '100%', padding: '0.75rem', background: '#000', border: '1px solid #222', borderRadius: '2px', color: '#fff', fontSize: '0.8rem', fontFamily: 'monospace' }}
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Save Button */}
@@ -785,10 +828,11 @@ function Settings() {
                   fontSize: '0.9rem',
                   cursor: 'pointer',
                   textTransform: 'uppercase',
-                  marginTop: '0.5rem'
+                  marginTop: '0.5rem',
+                  boxShadow: '0 4px 20px rgba(240, 185, 11, 0.2)'
                 }}
               >
-                {saving ? 'Saving & Reconnecting...' : 'Save API Configuration'}
+                {saving ? 'Saving & Reconnecting...' : 'Save Multi-Exchange Configuration'}
               </button>
 
             </div>

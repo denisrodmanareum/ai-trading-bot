@@ -7,7 +7,7 @@ from loguru import logger
 from datetime import datetime, timedelta
 import time
 
-from trading.base_client import BaseExchangeClient
+from trading.binance_client import BinanceClient
 from ai.agent import TradingAgent
 from app.services.price_stream import PriceStreamService
 from app.services.websocket_manager import WebSocketManager
@@ -23,13 +23,6 @@ from ai.smart_money_concept import SmartMoneyConceptAnalyzer
 from app.services.coin_selector import coin_selector
 from trading.slippage_manager import SlippageManager  # 🆕
 from trading.partial_exit_manager import PartialExitManager  # 🆕
-from trading.trailing_sl_helper import move_sl_to_breakeven, update_trailing_stop_loss  # 🆕
-from ai.portfolio_manager import PortfolioManager  # 🆕 Phase 2
-from ai.crypto_vix import CryptoVIX  # 🆕 Phase 2
-from ai.performance_monitor import PerformanceMonitor  # 🆕 Phase 2
-from ai.hybrid_ai import HybridAI  # 🆕 Phase 3
-from ai.backtest_engine import BacktestEngine  # 🆕 Phase 3
-from ai.parameter_optimizer import ParameterOptimizer  # 🆕 Phase 3
 import os
 import pandas as pd
 
@@ -168,9 +161,7 @@ class CircuitBreaker:
         """Record trade result"""
         if pnl_pct < 0:
             self.recent_losses.append((time.time(), abs(pnl_pct)))
-            # Clean up old records (older than max window)
-            max_window = max(t['window'] for t in self.tiers)
-            self._cleanup(max_window)
+            self._cleanup()
         
     def _cleanup(self, window_minutes: int):
         """Remove old records beyond window"""
@@ -224,17 +215,8 @@ class AutoTradingService:
     Connects real-time price stream -> AI Agent -> Order Execution
     """
     
-    # Helper to get the correct exchange client
-async def get_exchange_client():
-    from trading.exchange_factory import ExchangeFactory
-    return await ExchangeFactory.get_client()
-
-# Alias for backward compatibility
-get_binance_client = get_exchange_client
-    
-    def __init__(self, exchange_client: BaseExchangeClient, ws_manager: WebSocketManager = None):
-        self.binance_client = exchange_client # Keep variable name for minimal diff if preferred, or rename to exchange_client
-        self.exchange_client = exchange_client
+    def __init__(self, binance_client: BinanceClient, ws_manager: WebSocketManager = None):
+        self.binance_client = binance_client
         self.ws_manager = ws_manager
         self.agent: Optional[TradingAgent] = None
         self.running = False
@@ -255,7 +237,6 @@ get_binance_client = get_exchange_client
         self.brackets: dict[str, Dict] = {}
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._daily_report_task: Optional[asyncio.Task] = None
-        self._performance_monitor_task: Optional[asyncio.Task] = None  # 🆕
         self._last_error_notify_ts: float = 0.0
         self._last_error_msg: str = ""
         
@@ -282,19 +263,11 @@ get_binance_client = get_exchange_client
         self.mtf_analyzer = MultiTimeframeAnalyzer(binance_client)
         self.smc_analyzer = SmartMoneyConceptAnalyzer()
         
-        # 🆕 Phase 1: Order Optimization
+        # 🆕 Slippage Manager
         self.slippage_manager = SlippageManager(self.binance_client)
+        
+        # 🆕 Partial Exit Manager
         self.partial_exit_manager = PartialExitManager()
-        
-        # 🆕 Phase 2: Risk Optimization
-        self.portfolio_manager = PortfolioManager(self.binance_client)
-        self.crypto_vix = CryptoVIX(self.binance_client)
-        self.performance_monitor = PerformanceMonitor(self.binance_client, self)
-        
-        # 🆕 Phase 3: AI Enhancement
-        self.hybrid_ai = HybridAI()
-        self.backtest_engine = BacktestEngine(self.binance_client)
-        self.parameter_optimizer = ParameterOptimizer(self.backtest_engine)
         
         # Shadow Mode (A/B Testing)
         self.shadow_agent: Optional[TradingAgent] = None
@@ -327,27 +300,6 @@ get_binance_client = get_exchange_client
                     latest_model = os.path.join(model_dir, sorted(models)[-1])
                     self.agent.load_model(latest_model)
                     logger.info(f"AutoTrading: Loaded model {latest_model}")
-                    
-                    # 🆕 Hybrid AI 초기화
-                    try:
-                        self.hybrid_ai.ppo_agent = self.agent
-                        self.hybrid_ai.mode = "ppo_only"
-                        
-                        # 최신 LSTM 모델 찾기 (현재 interval 기준)
-                        import glob
-                        symbol = "BTCUSDT" # Default or dynamic
-                        interval = self.strategy_config.selected_interval
-                        lstm_pattern = os.path.join(settings.AI_MODEL_PATH, f"lstm_{symbol}_{interval}_*.pt")
-                        lstm_models = sorted(glob.glob(lstm_pattern))
-                        
-                        if lstm_models:
-                            latest_lstm = lstm_models[-1]
-                            self.hybrid_ai.load_lstm(latest_lstm)
-                            logger.info(f"✅ Hybrid AI: LSTM model loaded for {interval}")
-                        else:
-                            logger.warning(f"⚠️ Hybrid AI: No LSTM model found for {interval}")
-                    except Exception as he:
-                        logger.error(f"Hybrid AI initialization failed: {he}")
                 else:
                     logger.warning("AutoTrading: No trained models found, creating new one...")
                     await self._create_new_model()
@@ -418,10 +370,6 @@ get_binance_client = get_exchange_client
             
         # 🔧 Restore state from DB
         await self._load_state()
-        
-        # 🆕 Start performance monitoring loop
-        if self._performance_monitor_task is None or self._performance_monitor_task.done():
-            self._performance_monitor_task = asyncio.create_task(self._performance_monitor_loop())
 
     async def check_risk_limits(self, account_info: Dict):
         """Check if trading should be stopped due to risk limits"""
@@ -500,7 +448,7 @@ get_binance_client = get_exchange_client
         await self.stop_shadow_mode() # Stop shadow too
         
         # Cancel specific tasks
-        for t in (self._heartbeat_task, self._daily_report_task, self._performance_monitor_task):
+        for t in (self._heartbeat_task, self._daily_report_task):
             if t and not t.done():
                 t.cancel()
                 try:
@@ -510,7 +458,6 @@ get_binance_client = get_exchange_client
         
         self._heartbeat_task = None
         self._daily_report_task = None
-        self._performance_monitor_task = None
         
         logger.info("Auto Trading Stopped")
 
@@ -776,15 +723,10 @@ get_binance_client = get_exchange_client
         logger.info(analysis_msg)
         # -------------------------------------
         
-        # 4. AI Prediction (Hybrid AI: PPO + LSTM 결합)
-        # 🔧 Now using HybridAI with PPO + LSTM synergy
-        if self.hybrid_ai and (self.hybrid_ai.ppo_agent or self.hybrid_ai.lstm_predictor):
-            ai_action, ai_confidence = await self.hybrid_ai.predict(market_state)
-        else:
-            ai_action, ai_confidence = self.agent.live_predict(market_state)
-            
+        # 4. AI Prediction (AI acts as FILTER/VALIDATOR) - 🔧 Now with confidence!
+        ai_action, ai_confidence = self.agent.live_predict(market_state)
         ai_action_name = ["HOLD", "LONG", "SHORT", "CLOSE"][ai_action]
-        logger.info(f"🤖 AI Prediction (Hybrid): {ai_action_name} (Confidence: {ai_confidence:.2%})")
+        logger.info(f"🤖 AI Prediction: {ai_action_name} (Confidence: {ai_confidence:.2%})")
         
         # 5. Tech Signal (Rules are the CAPTAIN)
         logger.info(f"🔍 Checking technical signals for {symbol}...")
@@ -901,7 +843,7 @@ get_binance_client = get_exchange_client
                  # Apply Dynamic Leverage (only if no position and different from current)
                  try:
                      current_leverage = position.get('leverage', 5)
-                     position_size = abs(float(position.get('position_amt', 0)))
+                     position_size = abs(float(position.get('positionAmt', 0)))
                      
                      # Only try to change leverage if:
                      # 1. Current leverage is different from desired leverage
@@ -1010,16 +952,16 @@ get_binance_client = get_exchange_client
                 current_balance = account['balance']
                 
                 # Calculate current total exposure from all positions
-                positions = await self.binance_client.get_all_positions()
+                positions = await self.binance_client.get_positions()
                 total_notional = 0.0
                 active_positions = 0
                 long_positions = 0
                 short_positions = 0
                 
                 for pos in positions:
-                    pos_amt = float(pos.get('position_amt', 0))
+                    pos_amt = float(pos.get('positionAmt', 0))
                     if abs(pos_amt) > 0:
-                        entry_price = float(pos.get('entry_price', 0))
+                        entry_price = float(pos.get('entryPrice', 0))
                         notional = abs(pos_amt * entry_price)
                         total_notional += notional
                         active_positions += 1
@@ -1070,28 +1012,6 @@ get_binance_client = get_exchange_client
                             return
                         else:
                             logger.info("✅ Extremely strong signal (5+), allowing despite concentration")
-                
-                # 🔧 CHECK 3: Portfolio Diversification (상관관계) 🆕
-                if len(positions) >= 2:  # 2개 이상 포지션 있을 때만
-                    try:
-                        diversification = await self.portfolio_manager.check_diversification(
-                            symbol, 
-                            "LONG" if action == 1 else "SHORT",
-                            [p for p in positions if abs(float(p.get('position_amt', 0))) > 0]
-                        )
-                        
-                        if not diversification['is_diversified']:
-                            logger.warning(
-                                f"⚠️ Diversification Warning: {diversification['recommendation']}"
-                            )
-                            # 신호 강도 5 미만이면 차단
-                            if signal_strength < 5:
-                                logger.warning(f"🚫 Blocked due to high correlation")
-                                return
-                            else:
-                                logger.info("✅ Extremely strong signal, allowing despite correlation")
-                    except Exception as e:
-                        logger.error(f"Diversification check failed: {e}")
                 
                 logger.info(
                     f"📊 Exposure Check: {current_exposure_pct*100:.1f}%/{max_exposure*100:.1f}% | "
@@ -1190,24 +1110,8 @@ get_binance_client = get_exchange_client
                 volatility_multiplier = 0.8  # -20%
                 logger.info(f"⚠️ Medium Volatility: ATR {atr_pct:.2f}%, reducing position by 20%")
         
-        # 🆕 4. VIX Adjustment: 시장 전체 변동성 고려
-        vix_multiplier = 1.0
-        try:
-            vix_score = await self.crypto_vix.calculate_vix()
-            vix_adjustment = self.crypto_vix.get_risk_adjustment(vix_score)
-            vix_multiplier = vix_adjustment['position_size_multiplier']
-            
-            if vix_multiplier != 1.0:
-                logger.info(
-                    f"📊 VIX Adjustment: Score={vix_score:.1f}, "
-                    f"Regime={vix_adjustment['regime']}, "
-                    f"Multiplier={vix_multiplier:.2f}"
-                )
-        except Exception as e:
-            logger.debug(f"VIX adjustment skipped: {e}")
-        
-        # 🆕 5. Final calculation (with VIX)
-        target_notional = base_notional * signal_multiplier * volatility_multiplier * vix_multiplier
+        # 4. Final calculation
+        target_notional = base_notional * signal_multiplier * volatility_multiplier
         
         # 5. Ensure min notional > 100 USDT (Binance Testnet Limit)
         safe_notional = max(target_notional, 120.0) 
@@ -1216,11 +1120,7 @@ get_binance_client = get_exchange_client
         quantity = max(0.002, min_qty) # Ensure at least 0.002 BTC
         quantity = round(quantity, 3) # Specific for BTC (3 decimal places)
         
-        logger.info(
-            f"📊 Position Sizing: Base={base_notional:.0f}, "
-            f"Signal×{signal_multiplier:.1f}, Vol×{volatility_multiplier:.1f}, "
-            f"VIX×{vix_multiplier:.1f} → Final={safe_notional:.0f} USDT"
-        )
+        logger.info(f"📊 Position Sizing: Base={base_notional:.0f}, Signal×{signal_multiplier:.1f}, Vol×{volatility_multiplier:.1f} → Final={safe_notional:.0f} USDT")
 
         quantity = await _round_quantity(symbol, quantity)
             
@@ -1254,9 +1154,9 @@ get_binance_client = get_exchange_client
                              fallback_price=price,
                              reason=f"FLIP_TO_LONG|{reason}".strip("|"),
                          )
-                    # Open long - 🆕 Using SlippageManager
-                    order = await self.slippage_manager.smart_order(symbol, "BUY", quantity)
-                    logger.info("Executed LONG with slippage control")
+                    # Open long
+                    order = await self.binance_client.place_market_order(symbol, "BUY", quantity)
+                    logger.info("Executed LONG")
                     # 🔧 Record trade time for duplicate prevention
                     self.last_trade_time_per_symbol[symbol] = time.time()
                     await self._broadcast_trade("LONG", symbol, quantity, order)
@@ -1302,9 +1202,9 @@ get_binance_client = get_exchange_client
                              fallback_price=price,
                              reason=f"FLIP_TO_SHORT|{reason}".strip("|"),
                          )
-                    # Open short - 🆕 Using SlippageManager
-                    order = await self.slippage_manager.smart_order(symbol, "SELL", quantity)
-                    logger.info("Executed SHORT with slippage control")
+                    # Open short
+                    order = await self.binance_client.place_market_order(symbol, "SELL", quantity)
+                    logger.info("Executed SHORT")
                     # 🔧 Record trade time for duplicate prevention
                     self.last_trade_time_per_symbol[symbol] = time.time()
                     await self._broadcast_trade("SHORT", symbol, quantity, order)
@@ -1588,7 +1488,7 @@ get_binance_client = get_exchange_client
             
             try:
                 current_leverage = position.get('leverage', 5)
-                position_size = abs(float(position.get('position_amt', 0)))
+                position_size = abs(float(position.get('positionAmt', 0)))
                 
                 if current_leverage != leverage and position_size == 0:
                     result = await self.binance_client.change_leverage(symbol, leverage)
@@ -1965,12 +1865,7 @@ get_binance_client = get_exchange_client
                 "trailing_active": False,
                 "initial_tp": float(tp_price) if tp_price is not None else None,
                 "initial_sl": float(sl_price) if sl_price is not None else None,
-                "initial_qty": float(quantity),  # 🆕 부분 청산용
             }
-            
-            # 🆕 부분 청산 초기화
-            self.partial_exit_manager.initialize_symbol(symbol, self.strategy_config.mode)
-            
             await self._save_state(symbol)
             return entry_price, tp_price, sl_price
 
@@ -2040,8 +1935,6 @@ get_binance_client = get_exchange_client
         - 최고가/최저가 업데이트
         - 트레일링 활성화 조건 체크
         - 익절가 동적 조정
-        - 🆕 부분 청산 체크
-        - 🆕 Trailing SL 체크
         """
         if not self.trailing_config.enabled:
             return
@@ -2064,33 +1957,6 @@ get_binance_client = get_exchange_client
         hold_minutes = (time.time() - entry_ts) / 60.0
         if hold_minutes < mode_config['min_hold_minutes']:
             return
-        
-        # 🆕 1. 부분 청산 체크
-        try:
-            exit_result = await self.partial_exit_manager.check_partial_exits(
-                symbol, bracket, current_price, self.binance_client
-            )
-            
-            if exit_result:
-                logger.info(
-                    f"💰 Partial Exit Complete: {symbol} {exit_result['level']} "
-                    f"at +{exit_result['pnl_pct']:.2f}%"
-                )
-                
-                # 첫 익절 후 본전 SL 설정
-                if self.partial_exit_manager.should_set_breakeven(symbol):
-                    await move_sl_to_breakeven(self.binance_client, self.brackets, symbol, entry_price)
-                    self.partial_exit_manager.mark_breakeven_set(symbol)
-        except Exception as e:
-            logger.error(f"Partial exit check failed for {symbol}: {e}")
-        
-        # 🆕 2. Trailing SL 체크 (수익 나고 있을 때)
-        try:
-            await update_trailing_stop_loss(
-                self.binance_client, self.brackets, symbol, current_price, entry_price, side, bracket
-            )
-        except Exception as e:
-            logger.error(f"Trailing SL update failed for {symbol}: {e}")
         
         leverage = bracket.get("leverage", 1)
         
@@ -2445,29 +2311,6 @@ get_binance_client = get_exchange_client
         except Exception as e:
             await self._notify_error(f"Daily report loop failed: {e}")
 
-    async def _performance_monitor_loop(self):
-        """🆕 Performance monitoring loop (every 6 hours)"""
-        try:
-            while self.running:
-                await asyncio.sleep(6 * 3600)  # 6시간마다
-                if not self.running:
-                    break
-                
-                # 성과 체크
-                result = await self.performance_monitor.check_performance_degradation(days=7)
-                
-                if result['status'] in ['warning', 'critical']:
-                    logger.warning(f"⚠️ Performance degradation detected: {result['status']}")
-                    
-                    # 재학습 필요 시
-                    if result['needs_retraining']:
-                        await self.performance_monitor.trigger_retraining()
-                
-        except asyncio.CancelledError:
-            return
-        except Exception as e:
-            await self._notify_error(f"Performance monitor loop failed: {e}")
-    
     async def _send_daily_report(self):
         if not notification_manager.enabled_channels.get("telegram", False):
             return

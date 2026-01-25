@@ -243,93 +243,88 @@ async def test_telegram_notification(req: TelegramTestRequest):
 # --- API Configuration Models ---
 
 class ApiConfig(BaseModel):
-    active_exchange: str
-    binance_key: str
-    bybit_key: str
+    api_key: str
+    api_secret: str
     testnet: bool
 
 class ApiConfigUpdate(BaseModel):
-    active_exchange: str  # "BINANCE" or "BYBIT"
-    binance_key: Optional[str] = None
-    binance_secret: Optional[str] = None
-    bybit_key: Optional[str] = None
-    bybit_secret: Optional[str] = None
+    api_key: str
+    api_secret: str
     testnet: bool
 
 # --- API Configuration Endpoints ---
 
 @router.get("/api-config", response_model=ApiConfig)
 async def get_api_config():
-    """Get current exchange configuration (masked)"""
+    """Run-time API configuration (masked)"""
     return {
-        "active_exchange": settings.ACTIVE_EXCHANGE,
-        "binance_key": f"{settings.BINANCE_API_KEY[:4]}...{settings.BINANCE_API_KEY[-4:]}" if len(settings.BINANCE_API_KEY) > 8 else "****",
-        "bybit_key": f"{settings.BYBIT_API_KEY[:4]}...{settings.BYBIT_API_KEY[-4:]}" if len(settings.BYBIT_API_KEY) > 8 else "****",
-        "testnet": settings.BINANCE_TESTNET # Using Binance testnet flag as global for now
+        "api_key": f"{settings.BINANCE_API_KEY[:4]}...{settings.BINANCE_API_KEY[-4:]}" if settings.BINANCE_API_KEY and len(settings.BINANCE_API_KEY) > 8 else "****",
+        "api_secret": "****", # Always mask secret
+        "testnet": settings.BINANCE_TESTNET
     }
 
 @router.post("/api-config")
 async def update_api_config(config: ApiConfigUpdate):
-    """Update API configuration and exchange selection"""
+    """
+    Update API keys and Testnet setting.
+    1. Updates memory settings.
+    2. Updates .env file.
+    3. Re-initializes Binance Client.
+    """
     try:
         # 1. Update memory
-        if config.active_exchange not in ["BINANCE", "BYBIT"]:
-            raise HTTPException(status_code=400, detail="Invalid exchange")
-            
-        settings.ACTIVE_EXCHANGE = config.active_exchange
-        if config.binance_key: settings.BINANCE_API_KEY = config.binance_key
-        if config.binance_secret: settings.BINANCE_API_SECRET = config.binance_secret
-        if config.bybit_key: settings.BYBIT_API_KEY = config.bybit_key
-        if config.bybit_secret: settings.BYBIT_API_SECRET = config.bybit_secret
+        settings.BINANCE_API_KEY = config.api_key
+        settings.BINANCE_API_SECRET = config.api_secret
         settings.BINANCE_TESTNET = config.testnet
-        settings.BYBIT_TESTNET = config.testnet
         
         # 2. Update .env file
-        env_path = ".env"
-        # Find path if running from backend
-        if not os.path.exists(env_path):
-            env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
-            
+        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), ".env")
+        
+        # Read existing lines
         lines = []
         if os.path.exists(env_path):
             with open(env_path, "r", encoding="utf-8") as f:
                 lines = f.readlines()
         
-        keys = {
-            "ACTIVE_EXCHANGE": settings.ACTIVE_EXCHANGE,
-            "BINANCE_API_KEY": settings.BINANCE_API_KEY,
-            "BINANCE_API_SECRET": settings.BINANCE_API_SECRET,
-            "BYBIT_API_KEY": settings.BYBIT_API_KEY,
-            "BYBIT_API_SECRET": settings.BYBIT_API_SECRET,
-            "BINANCE_TESTNET": str(settings.BINANCE_TESTNET).lower(),
-            "BYBIT_TESTNET": str(settings.BYBIT_TESTNET).lower()
-        }
-        
         new_lines = []
-        handled = set()
+        keys_updated = {"BINANCE_API_KEY": False, "BINANCE_API_SECRET": False, "BINANCE_TESTNET": False}
+        
         for line in lines:
-            found = False
-            for k in keys:
-                if line.startswith(f"{k}="):
-                    new_lines.append(f"{k}={keys[k]}\n")
-                    handled.add(k)
-                    found = True
-                    break
-            if not found:
+            if line.startswith("BINANCE_API_KEY="):
+                new_lines.append(f"BINANCE_API_KEY={config.api_key}\n")
+                keys_updated["BINANCE_API_KEY"] = True
+            elif line.startswith("BINANCE_API_SECRET="):
+                new_lines.append(f"BINANCE_API_SECRET={config.api_secret}\n")
+                keys_updated["BINANCE_API_SECRET"] = True
+            elif line.startswith("BINANCE_TESTNET="):
+                new_lines.append(f"BINANCE_TESTNET={str(config.testnet).lower()}\n")
+                keys_updated["BINANCE_TESTNET"] = True
+            else:
                 new_lines.append(line)
-                
-        for k in keys:
-            if k not in handled:
-                new_lines.append(f"{k}={keys[k]}\n")
-                
+        
+        # Append valid missing keys
+        if not keys_updated["BINANCE_API_KEY"]:
+            new_lines.append(f"BINANCE_API_KEY={config.api_key}\n")
+        if not keys_updated["BINANCE_API_SECRET"]:
+            new_lines.append(f"BINANCE_API_SECRET={config.api_secret}\n")
+        if not keys_updated["BINANCE_TESTNET"]:
+            new_lines.append(f"BINANCE_TESTNET={str(config.testnet).lower()}\n")
+            
         with open(env_path, "w", encoding="utf-8") as f:
             f.writelines(new_lines)
             
-        # 3. Reload Exchange Client
-        from trading.exchange_factory import ExchangeFactory
-        await ExchangeFactory.reload()
+        logger.info("API Configuration updated and saved to .env")
         
-        return {"status": "success", "message": f"Updated to {config.active_exchange}"}
+        # 3. Re-initialize Binance Client
+        # We need to import main here to avoid circular imports at top level
+        import app.main as main_app
+        if main_app.binance_client:
+            await main_app.binance_client.close()
+            # The client reads settings from app.core.config.settings, which we just updated
+            await main_app.binance_client.initialize()
+            logger.info("Binance Client re-initialized with new settings")
+            
+        return {"status": "success", "message": "Configuration saved and client reconnected"}
 
     except Exception as e:
         logger.error(f"Failed to update API config: {e}")

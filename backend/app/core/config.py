@@ -10,13 +10,17 @@ class Settings(BaseSettings):
     """Application settings"""
     
     # Binance API
-    # ⚠️ 보안상 API 키를 코드에 하드코딩하지 마세요.
-    # backend/.env 에 아래 키로 넣어주세요:
-    # BINANCE_API_KEY=...
-    # BINANCE_API_SECRET=...
-    BINANCE_API_KEY: str = "zb20XMIislFoTrI84WOvcPhoHvffKbALO2tQRwnrCCtcs5wh9rLqba78yXFk2OY8"
-    BINANCE_API_SECRET: str = "yn2cZ5YRvs6PFA4VuipXCmqS8LOKTXT24UOYz93ygYjMzUMCmHrTRNVwfCga7vqk"
+    BINANCE_API_KEY: str = ""
+    BINANCE_API_SECRET: str = ""
     BINANCE_TESTNET: bool = True
+    
+    # Bybit API
+    BYBIT_API_KEY: str = ""
+    BYBIT_API_SECRET: str = ""
+    BYBIT_TESTNET: bool = True
+    
+    # Active Exchange
+    ACTIVE_EXCHANGE: str = "BINANCE" # BINANCE or BYBIT
     
     # Trading
     INITIAL_BALANCE: float = 10000.0

@@ -108,8 +108,8 @@ class PortfolioManager:
             # 같은 방향 포지션만 추출
             same_direction = [
                 p for p in active_positions
-                if (float(p.get('positionAmt', 0)) > 0 and side == "LONG") or
-                   (float(p.get('positionAmt', 0)) < 0 and side == "SHORT")
+                if (float(p.get('position_amt', 0)) > 0 and side == "LONG") or
+                   (float(p.get('position_amt', 0)) < 0 and side == "SHORT")
             ]
             
             if len(same_direction) == 0:
@@ -206,14 +206,14 @@ class PortfolioManager:
         notionals = []
         
         for pos in positions:
-            amt = float(pos.get('positionAmt', 0))
+            amt = float(pos.get('position_amt', 0))
             if amt > 0:
                 long_count += 1
             elif amt < 0:
                 short_count += 1
             
             # Notional value
-            entry_price = float(pos.get('entryPrice', 0))
+            entry_price = float(pos.get('entry_price', 0))
             notional = abs(amt * entry_price)
             notionals.append(notional)
         

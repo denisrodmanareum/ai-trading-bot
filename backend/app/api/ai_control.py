@@ -242,9 +242,8 @@ async def optimize_hyperparameters(request: OptimizationRequest, background_task
             trading_agent = TradingAgent()
         
         # Fetch data for optimization
-        from trading.binance_client import BinanceClient
-        client = BinanceClient()
-        await client.initialize()
+        from trading.exchange_factory import ExchangeFactory
+        exchange_client = await ExchangeFactory.get_client()
         
         # Validate days
         days = request.days if request.days and request.days > 0 else 7
@@ -676,14 +675,13 @@ async def trigger_daily_review():
     """Manually trigger daily review"""
     try:
         from ai.daily_review import DailyReviewAnalyzer as DailyReviewer
-        from trading.binance_client import BinanceClient
+        from trading.exchange_factory import ExchangeFactory
         
-        binance = BinanceClient()
-        await binance.initialize()
+        exchange_client = await ExchangeFactory.get_client()
         
         try:
-            # Fetch raw trades from Binance
-            raw_trades = await binance.get_user_trades(limit=100)
+            # Fetch raw trades from exchange
+            raw_trades = await exchange_client.get_user_trades(limit=100)
             
             # Map Binance fields to Analyzer schema
             trades = []
@@ -707,7 +705,7 @@ async def trigger_daily_review():
             with open("data/logs/improvement_suggestions.json", 'w') as f:
                 json.dump(suggestions, f, indent=2)
         finally:
-            await binance.close()
+            pass # Managed by factory
         
         # Save report
         os.makedirs("data/logs", exist_ok=True)
@@ -749,12 +747,10 @@ async def get_improvement_suggestions():
 @router.get("/weekly-summary")
 async def get_weekly_summary():
     """Get weekly performance summary"""
-    try:
         # Calculate weekly stats from trade history
-        from trading.binance_client import BinanceClient
+        from trading.exchange_factory import ExchangeFactory
         
-        binance = BinanceClient()
-        await binance.initialize()
+        exchange_client = await ExchangeFactory.get_client()
         
         try:
             # Get trades from last 7 days
@@ -762,13 +758,17 @@ async def get_weekly_summary():
             start_time = end_time - timedelta(days=7)
             
             # Correctly call the underlying client for time-limited trades
-            trades = await binance.client.futures_account_trades(
-                symbol="BTCUSDT",
-                startTime=int(start_time.timestamp() * 1000),
-                endTime=int(end_time.timestamp() * 1000)
-            )
+            # Using binance-specific attributes if available, otherwise generic
+            if hasattr(exchange_client, 'client') and hasattr(exchange_client.client, 'futures_account_trades'):
+                trades = await exchange_client.client.futures_account_trades(
+                    symbol="BTCUSDT",
+                    startTime=int(start_time.timestamp() * 1000),
+                    endTime=int(end_time.timestamp() * 1000)
+                )
+            else:
+                trades = await exchange_client.get_user_trades(limit=100) # Fallback
         finally:
-            await binance.close()
+            pass # Managed by factory
         
         if not trades:
             return {

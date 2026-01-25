@@ -7,14 +7,14 @@ from datetime import datetime, time
 from loguru import logger
 from ai.trainer import train_agent
 from ai.agent import TradingAgent
-from trading.binance_client import BinanceClient
+from trading.base_client import BaseExchangeClient
 
 
 class AutoImprover:
     """AI 자동 개선 시스템"""
     
-    def __init__(self, binance_client: BinanceClient):
-        self.binance_client = binance_client
+    def __init__(self, exchange_client: BaseExchangeClient):
+        self.binance_client = exchange_client
         self.enabled = False
         self.last_training = None
         self.performance_history = []
@@ -141,12 +141,12 @@ class AutoImprover:
 auto_improver = None
 
 
-async def start_auto_improvement(binance_client: BinanceClient):
+async def start_auto_improvement(exchange_client: BaseExchangeClient):
     """자동 개선 시스템 시작"""
     global auto_improver
     
     if auto_improver is None:
-        auto_improver = AutoImprover(binance_client)
+        auto_improver = AutoImprover(exchange_client)
         asyncio.create_task(auto_improver.start())
         logger.info("🚀 Auto-improvement task created")
 

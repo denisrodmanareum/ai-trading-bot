@@ -8,7 +8,7 @@ from loguru import logger
 
 from ai.agent import TradingAgent
 from ai.features import add_technical_indicators
-from trading.binance_client import BinanceClient
+from trading.exchange_factory import ExchangeFactory
 from app.core.config import settings
 
 
@@ -21,8 +21,7 @@ async def fetch_training_data(
     """Fetch historical data for training/backtesting"""
     logger.info(f"Fetching {days} days of {interval} data for {symbol} (+{warmup_candles} warmup)")
     
-    client = BinanceClient()
-    await client.initialize()
+    client = await ExchangeFactory.get_client()
     
     try:
         # Calculate total number of candles needed
@@ -51,12 +50,19 @@ async def fetch_training_data(
             
             end_time = last_timestamp - 1 if last_timestamp else None
             
-            klines = await client.client.futures_klines(
-                symbol=symbol,
-                interval=interval,
-                limit=limit,
-                endTime=end_time
-            )
+            # Use binance-specific Client object if available or generalize
+            # For now, we assume Binance for training data fetch OR we add get_historical_klines to base client
+            if hasattr(client, 'client'):
+                klines = await client.client.futures_klines(
+                    symbol=symbol,
+                    interval=interval,
+                    limit=limit,
+                    endTime=end_time
+                )
+            else:
+                # Generic fallback if implemented in base_client
+                df_temp = await client.get_klines(symbol, interval, limit)
+                klines = df_temp.values.tolist() # Simplified
             
             if not klines:
                 break
@@ -90,7 +96,7 @@ async def fetch_training_data(
         return df
         
     finally:
-        await client.close()
+        pass # Client management is handled by factory
 
 
 async def train_agent(

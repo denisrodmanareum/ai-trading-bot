@@ -22,6 +22,7 @@ function TradingPerfect() {
   const [ticker, setTicker] = useState(null);
   const [fundingCountdown, setFundingCountdown] = useState('');
   const [prices, setPrices] = useState({}); // 모든 심볼의 가격 저장
+  const [activeExchange, setActiveExchange] = useState('BINANCE');
 
   // AI Control State
   const [aiRunning, setAiRunning] = useState(false);
@@ -49,14 +50,15 @@ function TradingPerfect() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [posRes, ordRes, balRes, aiRes, configRes, symRes, dashRes] = await Promise.all([
+        const [posRes, ordRes, balRes, aiRes, configRes, symRes, dashRes, apiRes] = await Promise.all([
           fetch('/api/trading/positions'),
           fetch(`/api/trading/orders?symbol=${symbol}`),
           fetch('/api/trading/balance'),
           fetch('/api/ai/status'),
           fetch('/api/trading/strategy/config'),
           fetch('/api/coins/selection'),
-          fetch('/api/dashboard/overview')
+          fetch('/api/dashboard/overview'),
+          fetch('/api/settings/api-config')
         ]);
 
         if (posRes.ok) setPositions(await posRes.json());
@@ -82,6 +84,10 @@ function TradingPerfect() {
         if (dashRes.ok) {
           const dashData = await dashRes.json();
           setPrices(dashData.prices || {});
+        }
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          setActiveExchange(apiData.active_exchange || 'BINANCE');
         }
 
         // Fetch Ticker Info
@@ -121,13 +127,28 @@ function TradingPerfect() {
 
   // Price WebSocket
   useEffect(() => {
-    const ws = new WebSocket(`wss://fstream.binance.com/ws/${symbol.toLowerCase()}@markPrice@1s`);
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      setCurrentPrice(parseFloat(data.p));
-    };
-    return () => ws.close();
-  }, [symbol]);
+    if (activeExchange === 'BINANCE') {
+      const ws = new WebSocket(`wss://fstream.binance.com/ws/${symbol.toLowerCase()}@markPrice@1s`);
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        setCurrentPrice(parseFloat(data.p));
+      };
+      return () => ws.close();
+    } else {
+      // Bybit Fallback: Polling (Bybit WebSocket is complex for V5 without library)
+      const fetchBybitPrice = async () => {
+        try {
+          const res = await fetch(`/api/trading/price/${symbol}`);
+          if (res.ok) {
+            const data = await res.json();
+            setCurrentPrice(data.price);
+          }
+        } catch (e) { }
+      };
+      const pId = setInterval(fetchBybitPrice, 2000);
+      return () => clearInterval(pId);
+    }
+  }, [symbol, activeExchange]);
 
   // Total calculation
   useEffect(() => {
@@ -284,6 +305,33 @@ function TradingPerfect() {
         background: '#0a0a0a',
         zIndex: 10
       }}>
+        {/* Exchange Selector */}
+        <div style={{
+          display: 'flex',
+          background: '#111',
+          padding: '2px',
+          borderRadius: '4px',
+          border: '1px solid #222'
+        }}>
+          {['BINANCE', 'BYBIT'].map(ex => (
+            <div
+              key={ex}
+              style={{
+                padding: '4px 8px',
+                fontSize: '0.65rem',
+                fontWeight: '900',
+                cursor: 'default',
+                borderRadius: '3px',
+                background: activeExchange === ex ? '#f0b90b' : 'transparent',
+                color: activeExchange === ex ? '#000' : '#444',
+                opacity: activeExchange === ex ? 1 : 0.5
+              }}
+            >
+              {ex}
+            </div>
+          ))}
+        </div>
+
         <div style={{ position: 'relative' }}>
           <div
             onClick={() => setShowSymbolSearch(!showSymbolSearch)}

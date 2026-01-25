@@ -5,9 +5,9 @@ from binance import AsyncClient
 from loguru import logger
 import time
 from app.core.config import settings
+from trading.base_client import BaseExchangeClient
 
-
-class BinanceClient:
+class BinanceClient(BaseExchangeClient):
     """Binance Futures API Client"""
     
     def __init__(self):

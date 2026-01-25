@@ -7,15 +7,16 @@ from typing import Optional
 from binance import AsyncClient, BinanceSocketManager
 from loguru import logger
 
-from trading.binance_client import BinanceClient
+from trading.base_client import BaseExchangeClient
 from app.services.websocket_manager import WebSocketManager
 
 
 class PriceStreamService:
     """Streams real-time price data from Binance and broadcasts to WebSocket clients"""
     
-    def __init__(self, binance_client: BinanceClient, ws_manager: WebSocketManager):
-        self.binance_client = binance_client
+    def __init__(self, exchange_client: BaseExchangeClient, ws_manager: WebSocketManager):
+        self.exchange_client = exchange_client
+        self.binance_client = exchange_client # Fallback for old refs
         self.ws_manager = ws_manager
         self.bm: Optional[BinanceSocketManager] = None
         self.running = False
@@ -38,8 +39,12 @@ class PriceStreamService:
         logger.info("Starting price stream service...")
         
         try:
-            # Create Binance Socket Manager
-            self.bm = BinanceSocketManager(self.binance_client.client)
+            # Create Socket Manager (Exchange specific)
+            if settings.ACTIVE_EXCHANGE == "BINANCE":
+                self.bm = BinanceSocketManager(self.exchange_client.client)
+            else:
+                logger.warning(f"WebSocket streaming not yet fully implemented for {settings.ACTIVE_EXCHANGE}. Using polling fallback.")
+                self.bm = None
             
             # 🔧 FIX: Get initial symbols from coin_selector
             from app.services.coin_selector import coin_selector
