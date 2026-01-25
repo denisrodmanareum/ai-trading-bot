@@ -71,6 +71,8 @@ async def get_status():
         if main.auto_trading_service:
             is_running = main.auto_trading_service.running
             active_agent = main.auto_trading_service.agent
+    except HTTPException:
+        raise
     except Exception as e:
         logger.warning(f"Failed to access auto_trading_service: {e}")
         is_running = False
@@ -116,6 +118,8 @@ async def start_ai():
             "message": "AI auto trading started",
             "running": True
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to start AI: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -143,6 +147,8 @@ async def stop_ai():
             "message": "AI auto trading stopped",
             "running": False
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to stop AI: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -179,6 +185,8 @@ async def train_model(request: TrainingRequest, background_tasks: BackgroundTask
             "message": "Training started in background"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Training failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -218,6 +226,8 @@ async def run_training_task(
         else:
             training_status["status"] = "Training completed but model not found"
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Training task failed: {e}")
         training_status["status"] = f"Training failed: {str(e)}"
@@ -288,6 +298,8 @@ async def optimize_hyperparameters(request: OptimizationRequest, background_task
             "message": f"Optimization started with {request.n_trials} trials"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Optimization failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -350,6 +362,8 @@ async def run_optimization_task(df, n_trials=10):
         except:
             pass
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Optimization task failed: {e}", exc_info=True)
         training_status["status"] = f"❌ Optimization failed: {str(e)[:100]}"
@@ -390,6 +404,8 @@ async def run_backtest(request: BacktestRequest):
             "results": results
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Backtest failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -417,6 +433,8 @@ async def delete_model(model_name: str):
             "status": "success",
             "message": f"Model {model_name} deleted successfully"
         }
+    except HTTPException:
+        raise
     except HTTPException:
         raise
     except Exception as e:
@@ -451,6 +469,8 @@ async def list_models():
         
         return {"models": models}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to list models: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -501,6 +521,8 @@ async def load_model(request: LoadModelRequest):
             "message": f"Model loaded: {os.path.basename(model_path)}"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to load model: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -527,6 +549,8 @@ async def delete_model(filename: str):
             "message": f"Model deleted: {filename}"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to delete model: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -556,7 +580,9 @@ async def batch_delete_models(request: BatchDeleteRequest):
                         os.remove(history_path)
                     
                     deleted_count += 1
-            except Exception as e:
+            except HTTPException:
+        raise
+    except Exception as e:
                 errors.append(f"{name}: {str(e)}")
         
         return {
@@ -565,6 +591,8 @@ async def batch_delete_models(request: BatchDeleteRequest):
             "errors": errors if errors else None
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Batch delete failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -665,6 +693,8 @@ async def get_daily_review():
         review_data.setdefault('avg_loss', 0)
         
         return review_data
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get daily review: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -716,6 +746,8 @@ async def trigger_daily_review():
             "status": "success",
             "report": report
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Daily review failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -739,6 +771,8 @@ async def get_improvement_suggestions():
             "status": "success",
             "suggestions": suggestions
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get suggestions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -789,6 +823,8 @@ async def get_weekly_summary():
             "total_pnl": round(total_pnl, 2),
             "avg_pnl_per_trade": round(total_pnl / total_trades, 2) if total_trades > 0 else 0
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Weekly summary failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -836,6 +872,8 @@ async def load_model_endpoint(request: LoadModelSimpleRequest):
             "status": "success",
             "message": f"Model {os.path.basename(model_path)} loaded successfully"
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to load model: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -19,6 +19,8 @@ async def get_positions():
         positions = await main.exchange_client.get_all_positions()
         return {"positions": positions}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get positions: {e}")
         raise HTTPException(status_code=500, detail=str(e))

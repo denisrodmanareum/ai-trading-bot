@@ -164,6 +164,8 @@ async def trigger_report():
             return {"status": "no_trades", "message": "No trades found for today"}
             
         return {"status": "success", "remark": remark}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -177,6 +179,8 @@ async def get_dashboard_recent_trades(symbol: str = "BTCUSDT", limit: int = 30):
             raise HTTPException(status_code=503, detail="Exchange not connected")
             
         return await main.exchange_client.get_recent_trades(symbol=symbol, limit=limit)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get dashboard trades: {e}")
         raise HTTPException(status_code=500, detail=str(e))

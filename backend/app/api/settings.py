@@ -71,6 +71,8 @@ async def get_settings():
             },
             "notifications": notification_manager.enabled_channels
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -112,6 +114,8 @@ async def update_settings(
         
         return {"status": "updated"}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to update settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -131,6 +135,8 @@ async def get_risk_status():
             "margin_level": main.auto_trading_service.last_margin_level,
             "kill_switch": main.auto_trading_service.risk_config.kill_switch
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get risk status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -142,6 +148,8 @@ async def get_notification_settings():
     try:
         from app.services.notifications import notification_manager
         return notification_manager.enabled_channels
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get notification settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -157,6 +165,8 @@ async def update_notification_settings(settings: NotificationSettings):
         if hasattr(notification_manager, "_save_to_disk"):
             notification_manager._save_to_disk()
         return {"status": "updated", "notifications": notification_manager.enabled_channels}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to update notification settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -175,6 +185,8 @@ async def get_telegram_settings():
             "chat_id": chat_id,
             "bot_token_configured": bool(bot_token),
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get telegram settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -206,6 +218,8 @@ async def save_telegram_settings(settings: TelegramNotificationSettings):
             "chat_id": notification_manager.telegram_config.get("chat_id", ""),
             "bot_token_configured": bool((notification_manager.telegram_config.get("bot_token") or "").strip()),
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to save telegram settings: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -234,6 +248,8 @@ async def test_telegram_notification(req: TelegramTestRequest):
             notification_manager.telegram_config = prev
 
         return {"status": "sent"}
+    except HTTPException:
+        raise
     except HTTPException:
         raise
     except Exception as e:
@@ -331,6 +347,8 @@ async def update_api_config(config: ApiConfigUpdate):
         
         return {"status": "success", "message": f"Updated to {config.active_exchange}"}
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to update API config: {e}")
         raise HTTPException(status_code=500, detail=str(e))

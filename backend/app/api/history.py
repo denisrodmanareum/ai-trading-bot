@@ -54,6 +54,8 @@ async def get_trades(
             
             return {"trades": trades_list}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get trades: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -109,6 +111,8 @@ async def get_stats():
                 "net_pnl": round(total_pnl - total_commission, 2)
             }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -130,6 +134,8 @@ async def get_daily_stats(date: str):
         
         return stats
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get daily stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -144,6 +150,8 @@ async def record_trade(trade_data: dict):
         
         return {"status": "recorded", "trade_id": 1}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to record trade: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -165,6 +173,8 @@ async def export_trades(
             "download_url": "/downloads/trades_export.csv"
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to export: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -183,6 +193,8 @@ async def clear_history():
             
             return {"status": "success", "message": "History cleared"}
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to clear history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -201,6 +213,8 @@ async def generate_report(force: bool = True):
         else:
             raise HTTPException(status_code=503, detail="Reporter service not available")
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to generate report: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -220,6 +234,8 @@ async def get_reports(limit: int = 10):
             reports = result.scalars().all()
             return reports
             
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get reports: {e}")
         raise HTTPException(status_code=500, detail=str(e))

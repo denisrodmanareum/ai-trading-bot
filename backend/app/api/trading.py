@@ -44,6 +44,8 @@ async def get_trading_symbols():
         return {
             "symbols": symbols[:100]  # Limit to top 100
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get symbols: {e}")
         # Fallback to default list
@@ -93,6 +95,8 @@ async def place_order(order: OrderRequest):
             )
         return result
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to place order: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -131,6 +135,8 @@ async def close_position():
             "results": results
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to close positions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -156,6 +162,8 @@ async def change_leverage(request: LeverageRequest):
         )
         return {"message": f"Leverage changed to {request.leverage}x", "data": resp}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Change leverage failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -173,6 +181,8 @@ async def get_price(symbol: str):
         price = await main.exchange_client.get_current_price(symbol)
         return {"symbol": symbol, "price": price}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get price: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -190,6 +200,8 @@ async def get_order_book(symbol: str):
         depth = await main.exchange_client.get_order_book(symbol)
         return depth
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get order book: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -207,6 +219,8 @@ async def get_balance():
         account = await main.exchange_client.get_account_info()
         return account
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get balance: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -226,6 +240,8 @@ async def start_auto_trading():
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to start auto trading: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -243,6 +259,8 @@ async def stop_auto_trading():
         await main.auto_trading_service.stop()
         return {"status": "stopped", "message": "Auto trading stopped"}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to stop auto trading: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -262,6 +280,8 @@ async def get_auto_trading_status():
             "processing": main.auto_trading_service.processing
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get status: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -477,6 +497,8 @@ async def sync_data():
             await session.commit()
 
         return {"status": "synced", "message": f"Synced {count} trades from Exchange (History Replaced)"}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Sync failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -491,6 +513,8 @@ async def get_open_orders(symbol: str = "BTCUSDT"):
              
         orders = await main.exchange_client.get_open_orders(symbol)
         return orders
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get orders: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -505,6 +529,8 @@ async def get_active_positions():
              
         positions = await main.exchange_client.get_all_positions()
         return positions
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get positions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -519,6 +545,8 @@ async def cancel_order(symbol: str, order_id: int):
              
         result = await main.exchange_client.cancel_order(symbol, order_id)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to cancel order: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -540,6 +568,8 @@ async def cancel_all_orders(symbol: str = "BTCUSDT"):
             results.append(res)
             
         return {"message": f"Cancelled {len(results)} orders", "details": results}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to cancel all: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -564,6 +594,8 @@ async def close_specific_position(symbol: str):
         order = await main.exchange_client.place_market_order(symbol, side, quantity, reduce_only=True)
         return {"message": f"Closed {symbol} position", "order": order}
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to close position {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -591,6 +623,8 @@ async def get_recent_trades(symbol: str = "BTCUSDT", limit: int = 30):
         
         return formatted_trades
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get recent trades: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -624,6 +658,8 @@ async def get_ticker_info(symbol: str):
             "turnover_24h": 0.0,
             "price_change_pct": 0.0
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to get ticker info for {symbol}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
