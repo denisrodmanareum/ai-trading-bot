@@ -21,6 +21,9 @@ from ai.stop_loss_ai import StopLossTakeProfitAI
 from ai.multi_timeframe import MultiTimeframeAnalyzer
 from ai.smart_money_concept import SmartMoneyConceptAnalyzer
 from app.services.coin_selector import coin_selector
+from trading.slippage_manager import SlippageManager  # 🆕
+from trading.partial_exit_manager import PartialExitManager  # 🆕
+from trading.trailing_sl_helper import move_sl_to_breakeven, update_trailing_stop_loss  # 🆕
 import os
 import pandas as pd
 
@@ -108,6 +111,15 @@ class StrategyConfig:
         self.autonomy_mode = autonomy_mode  # "CONSERVATIVE" or "AGGRESSIVE"
         self.selected_interval = selected_interval  # Active trading interval
         self.use_smc = use_smc  # Smart Money Concept 전략 사용 여부
+        
+        # Strategy Parameters (Dynamic)
+        self.parameters = {
+            'oversold': 25,
+            'overbought': 75,
+            'rsi_oversold': 30,
+            'rsi_overbought': 70,
+            'volume_spike_mult': 2.0
+        }
     
     def get_available_intervals(self):
         """Get available intervals for current mode"""
@@ -240,7 +252,7 @@ class AutoTradingService:
         self.risk_status = "NORMAL" # NORMAL, WARNING, STOPPED
         
         # Stochastic Strategy
-        self.stoch_strategy = StochasticTradingStrategy()
+        self.stoch_strategy = StochasticTradingStrategy(config=self.strategy_config.parameters)
         
         # Spike Detector
         self.spike_detector = SpikeDetector()
@@ -251,6 +263,12 @@ class AutoTradingService:
         self.sl_tp_ai = StopLossTakeProfitAI()
         self.mtf_analyzer = MultiTimeframeAnalyzer(binance_client)
         self.smc_analyzer = SmartMoneyConceptAnalyzer()
+        
+        # 🆕 Slippage Manager
+        self.slippage_manager = SlippageManager(self.binance_client)
+        
+        # 🆕 Partial Exit Manager
+        self.partial_exit_manager = PartialExitManager()
         
         # Shadow Mode (A/B Testing)
         self.shadow_agent: Optional[TradingAgent] = None
@@ -350,6 +368,9 @@ class AutoTradingService:
             self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         if self._daily_report_task is None or self._daily_report_task.done():
             self._daily_report_task = asyncio.create_task(self._daily_report_loop())
+            
+        # 🔧 Restore state from DB
+        await self._load_state()
 
     async def check_risk_limits(self, account_info: Dict):
         """Check if trading should be stopped due to risk limits"""
@@ -1134,9 +1155,9 @@ class AutoTradingService:
                              fallback_price=price,
                              reason=f"FLIP_TO_LONG|{reason}".strip("|"),
                          )
-                    # Open long
-                    order = await self.binance_client.place_market_order(symbol, "BUY", quantity)
-                    logger.info("Executed LONG")
+                    # Open long - 🆕 Using SlippageManager
+                    order = await self.slippage_manager.smart_order(symbol, "BUY", quantity)
+                    logger.info("Executed LONG with slippage control")
                     # 🔧 Record trade time for duplicate prevention
                     self.last_trade_time_per_symbol[symbol] = time.time()
                     await self._broadcast_trade("LONG", symbol, quantity, order)
@@ -1182,9 +1203,9 @@ class AutoTradingService:
                              fallback_price=price,
                              reason=f"FLIP_TO_SHORT|{reason}".strip("|"),
                          )
-                    # Open short
-                    order = await self.binance_client.place_market_order(symbol, "SELL", quantity)
-                    logger.info("Executed SHORT")
+                    # Open short - 🆕 Using SlippageManager
+                    order = await self.slippage_manager.smart_order(symbol, "SELL", quantity)
+                    logger.info("Executed SHORT with slippage control")
                     # 🔧 Record trade time for duplicate prevention
                     self.last_trade_time_per_symbol[symbol] = time.time()
                     await self._broadcast_trade("SHORT", symbol, quantity, order)
@@ -1226,6 +1247,7 @@ class AutoTradingService:
                         fallback_price=price,
                         reason=reason,
                     )
+                    await self._clear_state(symbol)
                     
                     # Calculate PnL (Estimated)
                     # Robust Price Extraction
@@ -1529,6 +1551,7 @@ class AutoTradingService:
                     }
                     
                     logger.info(f"✅ SMC LONG 브래킷 설정: TP={take_profit:.2f}, SL={stop_loss:.2f}")
+                    await self._save_state(symbol)
                 except Exception as e:
                     logger.error(f"SMC 브래킷 주문 실패: {e}")
             
@@ -1580,12 +1603,87 @@ class AutoTradingService:
                     }
                     
                     logger.info(f"✅ SMC SHORT 브래킷 설정: TP={take_profit:.2f}, SL={stop_loss:.2f}")
+                    await self._save_state(symbol)
                 except Exception as e:
                     logger.error(f"SMC 브래킷 주문 실패: {e}")
             
         except Exception as e:
             logger.error(f"SMC 주문 실행 실패: {e}")
             await self._notify_error(f"SMC 주문 실행 실패: {e}", context={"symbol": symbol})
+            
+    async def _save_state(self, symbol: str):
+        """Save bracket state to DB"""
+        try:
+            from app.database import SessionLocal
+            from app.models import TradeState
+            import json
+            
+            bracket = self.brackets.get(symbol)
+            if not bracket:
+                return
+
+            data_str = json.dumps(bracket)
+            
+            async with SessionLocal() as db:
+                # Upsert
+                existing = await db.get(TradeState, symbol)
+                if existing:
+                    existing.data = data_str
+                    existing.updated_at = datetime.utcnow()
+                else:
+                    new_state = TradeState(symbol=symbol, data=data_str)
+                    db.add(new_state)
+                await db.commit()
+                
+        except Exception as e:
+            logger.error(f"Failed to save state for {symbol}: {e}")
+
+    async def _clear_state(self, symbol: str):
+        """Remove state from DB"""
+        try:
+            from app.database import SessionLocal
+            from app.models import TradeState
+            
+            if symbol in self.brackets:
+                del self.brackets[symbol]
+                
+            async with SessionLocal() as db:
+                existing = await db.get(TradeState, symbol)
+                if existing:
+                    await db.delete(existing)
+                    await db.commit()
+                    
+        except Exception as e:
+            logger.error(f"Failed to clear state for {symbol}: {e}")
+
+    async def _load_state(self):
+        """Load active brackets from DB"""
+        try:
+            from app.database import SessionLocal
+            from app.models import TradeState
+            import json
+            from sqlalchemy import select
+            
+            async with SessionLocal() as db:
+                result = await db.execute(select(TradeState))
+                states = result.scalars().all()
+                
+                count = 0
+                for s in states:
+                    try:
+                        self.brackets[s.symbol] = json.loads(s.data)
+                        count += 1
+                        # Restore open timestamp if not present
+                        if s.symbol not in self.position_open_ts:
+                            self.position_open_ts[s.symbol] = self.brackets[s.symbol].get('entry_ts', time.time())
+                    except:
+                        pass
+                
+                if count > 0:
+                    logger.info(f"🔄 Restored {count} active bracket orders from DB")
+                    
+        except Exception as e:
+            logger.error(f"Failed to load state: {e}")
 
     def _fmt_usdt(self, x: float) -> str:
         try:
@@ -1743,6 +1841,13 @@ class AutoTradingService:
                 stop_loss_price=sl_price,
                 take_profit_price=tp_price,
             )
+            tp_order_id = None
+            sl_order_id = None
+            if res.get("tp"):
+                tp_order_id = res["tp"]["orderId"]
+            if res.get("sl"):
+                sl_order_id = res["sl"]["orderId"]
+            
             self.brackets[symbol] = {
                 "symbol": symbol,
                 "side": side,
@@ -1751,8 +1856,8 @@ class AutoTradingService:
                 "entry_price": float(entry_price),
                 "tp": float(tp_price) if tp_price is not None else None,
                 "sl": float(sl_price) if sl_price is not None else None,
-                "tp_order_id": (res.get("tp") or {}).get("orderId") if res.get("tp") else None,
-                "sl_order_id": (res.get("sl") or {}).get("orderId") if res.get("sl") else None,
+                "tp_order_id": tp_order_id,
+                "sl_order_id": sl_order_id,
                 "entry_ts": time.time(),
                 "entry_reason": reason,
                 # Trailing Take Profit fields
@@ -1761,11 +1866,19 @@ class AutoTradingService:
                 "trailing_active": False,
                 "initial_tp": float(tp_price) if tp_price is not None else None,
                 "initial_sl": float(sl_price) if sl_price is not None else None,
+                "initial_qty": float(quantity),  # 🆕 부분 청산용
             }
-        except Exception as e:
-            await self._notify_error(f"Bracket order placement failed: {e}", context={"symbol": symbol})
+            
+            # 🆕 부분 청산 초기화
+            self.partial_exit_manager.initialize_symbol(symbol, self.strategy_config.mode)
+            
+            await self._save_state(symbol)
+            return entry_price, tp_price, sl_price
 
-        return entry_price, tp_price, sl_price
+        except Exception as e:
+            logger.error(f"Bracket order placement failed: {e}")
+            await self._notify_error(f"Bracket setup failed: {e}", context={"symbol": symbol})
+            return entry_price, tp_price, sl_price
 
     async def _can_flip_position(self, symbol: str, current_price: float, signal_strength: int) -> bool:
         """
@@ -1828,6 +1941,8 @@ class AutoTradingService:
         - 최고가/최저가 업데이트
         - 트레일링 활성화 조건 체크
         - 익절가 동적 조정
+        - 🆕 부분 청산 체크
+        - 🆕 Trailing SL 체크
         """
         if not self.trailing_config.enabled:
             return
@@ -1850,6 +1965,33 @@ class AutoTradingService:
         hold_minutes = (time.time() - entry_ts) / 60.0
         if hold_minutes < mode_config['min_hold_minutes']:
             return
+        
+        # 🆕 1. 부분 청산 체크
+        try:
+            exit_result = await self.partial_exit_manager.check_partial_exits(
+                symbol, bracket, current_price, self.binance_client
+            )
+            
+            if exit_result:
+                logger.info(
+                    f"💰 Partial Exit Complete: {symbol} {exit_result['level']} "
+                    f"at +{exit_result['pnl_pct']:.2f}%"
+                )
+                
+                # 첫 익절 후 본전 SL 설정
+                if self.partial_exit_manager.should_set_breakeven(symbol):
+                    await move_sl_to_breakeven(self.binance_client, self.brackets, symbol, entry_price)
+                    self.partial_exit_manager.mark_breakeven_set(symbol)
+        except Exception as e:
+            logger.error(f"Partial exit check failed for {symbol}: {e}")
+        
+        # 🆕 2. Trailing SL 체크 (수익 나고 있을 때)
+        try:
+            await update_trailing_stop_loss(
+                self.binance_client, self.brackets, symbol, current_price, entry_price, side, bracket
+            )
+        except Exception as e:
+            logger.error(f"Trailing SL update failed for {symbol}: {e}")
         
         leverage = bracket.get("leverage", 1)
         
