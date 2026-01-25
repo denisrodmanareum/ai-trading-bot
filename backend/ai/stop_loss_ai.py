@@ -408,13 +408,15 @@ class StopLossTakeProfitAI:
         rsi = current_market_data.get('rsi', 50.0)
         macd = current_market_data.get('macd', 0.0)
         
-        # 🔧 모드별 배수 조정
+        # 🔧 모드별 배수 조정 (수수료 고려 + 손익비 개선)
+        # SCALP: 2.5:1 손익비 (4% / 1.6% = 2.5)
+        # SWING: 3.0:1 손익비 (9% / 3% = 3.0)
         if trading_mode == "SCALP":
-            sl_multiplier = 2.0   # 빠른 손절
-            tp_multiplier = 3.5   # 작은 익절
+            sl_multiplier = 2.0   # 빠른 손절 (약 1.6% with 5x leverage)
+            tp_multiplier = 4.0   # 🔧 3.5→4.0 (약 4% with 5x, 수수료 후 3.2%)
         else:  # SWING
-            sl_multiplier = 3.0   # 여유 있는 손절
-            tp_multiplier = 7.0   # 큰 익절
+            sl_multiplier = 3.0   # 여유 있는 손절 (약 3% with 5x)
+            tp_multiplier = 9.0   # 🔧 7.0→9.0 (약 9% with 5x, 수수료 후 8.2%)
         
         # Predict SL
         sl_result = self.predict_stop_loss(

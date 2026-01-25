@@ -388,15 +388,16 @@ class TradingAgent:
         logger.info(f"Backtest completed: {metrics}")
         return metrics
     
-    def live_predict(self, market_data: Dict) -> int:
+    def live_predict(self, market_data: Dict) -> tuple[int, float]:
         """
-        Predict action for live trading
+        Predict action for live trading with confidence score
         
         Args:
             market_data: Dictionary containing current market state
             
         Returns:
-            action: 0=Hold, 1=Long, 2=Short, 3=Close
+            (action, confidence): action: 0=Hold, 1=Long, 2=Short, 3=Close
+                                 confidence: 0.0~1.0 (AI certainty)
         """
         if self.model is None:
             raise ValueError("Model not loaded")
@@ -404,10 +405,30 @@ class TradingAgent:
         # Convert market data to observation format
         obs = self._prepare_observation(market_data)
         
+        # 🔧 Get action probabilities for confidence
+        try:
+            import torch
+            obs_tensor = torch.FloatTensor(obs).unsqueeze(0)
+            with torch.no_grad():
+                action_probs = self.model.policy.get_distribution(obs_tensor).distribution.probs
+                probs = action_probs.cpu().numpy()[0]
+        except Exception as e:
+            logger.debug(f"Could not extract probabilities: {e}")
+            probs = None
+        
         # Predict action
         action = self.predict(obs, deterministic=True)
+        action = int(action)
         
-        return int(action)
+        # 🔧 Calculate confidence (probability of selected action)
+        if probs is not None and len(probs) > action:
+            confidence = float(probs[action])
+        else:
+            confidence = 0.5  # Default: uncertain
+        
+        logger.debug(f"AI: Action={action}, Confidence={confidence:.2f}")
+        
+        return action, confidence
     
     def _prepare_observation(self, market_data: Dict) -> np.ndarray:
         """

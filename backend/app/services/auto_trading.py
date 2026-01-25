@@ -28,7 +28,7 @@ class RiskConfig:
     """Risk Management Configuration"""
     def __init__(
         self, 
-        daily_loss_limit=50.0, 
+        daily_loss_limit=25.0,  # 🔧 50→25 USDT (잔고의 0.5%, 보수적 관리)
         max_margin_level=0.8, 
         kill_switch=False, 
         position_mode="ADAPTIVE",  # 🔧 "FIXED", "RATIO", "ADAPTIVE"
@@ -37,7 +37,7 @@ class RiskConfig:
         core_coin_ratio=0.05,  # 🔧 NEW: 코어코인 비율 5%
         alt_coin_ratio=0.02   # 🔧 NEW: 알트코인 비율 2%
     ):
-        self.daily_loss_limit = daily_loss_limit # USDT
+        self.daily_loss_limit = daily_loss_limit # USDT (현재 잔고 5000의 0.5%)
         self.max_margin_level = max_margin_level # Maintenance Margin / Margin Balance
         self.kill_switch = kill_switch # If True, no new trades allowed
         self.position_mode = position_mode # "FIXED", "RATIO", "ADAPTIVE"
@@ -65,18 +65,22 @@ class TrailingTakeProfitConfig:
         self.flip_min_signal_score = flip_min_signal_score
     
     def get_config_for_mode(self, mode: str) -> dict:
-        """🔧 모드별 설정 반환"""
+        """🔧 모드별 설정 반환 (수수료 고려)"""
+        # 수수료: 0.04% × 2 = 0.08% (왕복)
+        # FLIP 포함 시: 0.16% (4회 거래)
+        # 레버리지 5x 적용 시: 수수료 영향 × 5
+        
         if mode == "SCALP":
             return {
-                'activation_pct': 0.8,  # 0.8% 수익에 빠른 활성화
-                'distance_pct': 0.8,    # 0.8% 하락 시 익절 (빠른 청산)
+                'activation_pct': 1.2,  # 🔧 0.8→1.2% (수수료 0.4% + 여유 0.8%)
+                'distance_pct': 0.8,    # 0.8% 하락 시 익절
                 'min_hold_minutes': 5,  # 5분 최소 보유
                 'flip_min_signal_score': 4  # 스캘핑은 더 유연
             }
         else:  # SWING
             return {
-                'activation_pct': 2.0,  # 2% 수익 후 활성화
-                'distance_pct': 2.0,    # 2% 하락 허용 (트렌드 추종)
+                'activation_pct': 2.5,  # 🔧 2.0→2.5% (수수료 + 안정적 수익)
+                'distance_pct': 1.5,    # 🔧 2.0→1.5% (빠른 익절)
                 'min_hold_minutes': 60,  # 60분 최소 보유
                 'flip_min_signal_score': 5  # 강한 신호만 FLIP
             }
@@ -126,16 +130,21 @@ class StrategyConfig:
 
 class CircuitBreaker:
     """
-    Safety Mechanism to trigger panic stop
-    Triggers if: Loss exceeds X% within Y minutes
-    Action: Pause trading for Z minutes
+    🔧 Enhanced 3-Tier Safety Mechanism
+    - Tier 1: 15분 내 -1% → 5분 정지 (빠른 대응)
+    - Tier 2: 30분 내 -2% → 30분 정지 (중간 위기)
+    - Tier 3: 60분 내 -3% → 당일 거래 중단 (심각)
     """
-    def __init__(self, loss_threshold_pct=2.0, window_minutes=60, pause_minutes=30):
-        self.loss_threshold_pct = loss_threshold_pct # e.g., 2% loss
-        self.window_minutes = window_minutes
-        self.pause_minutes = pause_minutes
+    def __init__(self):
+        # 🔧 3-Tier Configuration
+        self.tiers = [
+            {'window': 15, 'threshold': 1.0, 'pause': 5, 'name': 'MINOR'},    # Tier 1
+            {'window': 30, 'threshold': 2.0, 'pause': 30, 'name': 'MODERATE'}, # Tier 2
+            {'window': 60, 'threshold': 3.0, 'pause': 1440, 'name': 'SEVERE'}  # Tier 3 (24h)
+        ]
         self.recent_losses = [] # List of (timestamp, loss_pct)
         self.paused_until: Optional[float] = None # Timestamp
+        self.triggered_tier: Optional[str] = None
 
     def record_trade(self, pnl_pct: float):
         """Record trade result"""
@@ -143,33 +152,49 @@ class CircuitBreaker:
             self.recent_losses.append((time.time(), abs(pnl_pct)))
             self._cleanup()
         
-    def _cleanup(self):
-        """Remove old records"""
-        cutoff = time.time() - (self.window_minutes * 60)
+    def _cleanup(self, window_minutes: int):
+        """Remove old records beyond window"""
+        cutoff = time.time() - (window_minutes * 60)
         self.recent_losses = [x for x in self.recent_losses if x[0] > cutoff]
         
     def check_status(self) -> bool:
         """
-        Check if circuit breaker is active.
+        🔧 Check 3-tier circuit breaker status
         Returns: True if PAUSED (Safe mode), False if NORMAL
         """
         now = time.time()
         
         # 1. Check if already paused
         if self.paused_until and now < self.paused_until:
+            remaining = (self.paused_until - now) / 60
+            if int(remaining) % 5 == 0:  # Log every 5 minutes
+                logger.warning(f"⏸️ Trading Paused ({self.triggered_tier}): {remaining:.0f}m remaining")
             return True
         elif self.paused_until:
-             self.paused_until = None # Reset
-             logger.info("✅ Circuit Breaker Lifted - Resuming Trading")
+            self.paused_until = None
+            self.triggered_tier = None
+            logger.info("✅ Circuit Breaker Lifted - Resuming Trading")
 
-        # 2. Check recent losses
-        self._cleanup()
-        total_loss_pct = sum(x[1] for x in self.recent_losses)
-        
-        if total_loss_pct >= self.loss_threshold_pct:
-            self.paused_until = now + (self.pause_minutes * 60)
-            logger.critical(f"CIRCUIT BREAKER TRIGGERED! Total Loss {total_loss_pct:.2f}% in last {self.window_minutes}m. Pausing for {self.pause_minutes}m.")
-            return True
+        # 2. 🔧 Check all tiers (from highest to lowest)
+        for tier in reversed(self.tiers):  # Check Tier 3 → 2 → 1
+            self._cleanup(tier['window'])
+            
+            # Calculate losses within window
+            cutoff = now - (tier['window'] * 60)
+            window_losses = [x[1] for x in self.recent_losses if x[0] > cutoff]
+            total_loss_pct = sum(window_losses)
+            
+            if total_loss_pct >= tier['threshold']:
+                self.paused_until = now + (tier['pause'] * 60)
+                self.triggered_tier = tier['name']
+                
+                pause_desc = "24시간" if tier['pause'] >= 1440 else f"{tier['pause']}분"
+                logger.critical(
+                    f"🚨 CIRCUIT BREAKER [{tier['name']}] TRIGGERED! "
+                    f"손실 {total_loss_pct:.2f}% in {tier['window']}분 "
+                    f"(임계값: {tier['threshold']}%) → {pause_desc} 거래 정지"
+                )
+                return True
             
         return False
 
@@ -678,9 +703,10 @@ class AutoTradingService:
         logger.info(analysis_msg)
         # -------------------------------------
         
-        # 4. AI Prediction (AI acts as FILTER/VALIDATOR)
-        ai_action = self.agent.live_predict(market_state)
+        # 4. AI Prediction (AI acts as FILTER/VALIDATOR) - 🔧 Now with confidence!
+        ai_action, ai_confidence = self.agent.live_predict(market_state)
         ai_action_name = ["HOLD", "LONG", "SHORT", "CLOSE"][ai_action]
+        logger.info(f"🤖 AI Prediction: {ai_action_name} (Confidence: {ai_confidence:.2%})")
         
         # 5. Tech Signal (Rules are the CAPTAIN)
         logger.info(f"🔍 Checking technical signals for {symbol}...")
@@ -730,15 +756,57 @@ class AutoTradingService:
              # Rule-based Signal Exists
              rule_action_id = 1 if tech_signal['action'] == "LONG" else 2
              
-             # AI FILTER LOGIC
+             # 🔧 ENHANCED AI FILTER LOGIC (Confidence-based)
              ai_opposes = (rule_action_id == 1 and ai_action == 2) or (rule_action_id == 2 and ai_action == 1)
+             ai_agrees = (rule_action_id == ai_action)
              
-             if ai_opposes and tech_signal['strength'] < 3:
-                 logger.warning(f"AI Blocked Rule: Rule {tech_signal['action']} vs AI {ai_action_name}")
-                 final_action = 0 # Blocked
-                 reason = "AI_BLOCKED"
-             else:
+             # 🔧 NEW: Weighted Decision System
+             # - 신호 강도 1~2: AI가 반대하면 차단
+             # - 신호 강도 3: AI 신뢰도 50% 이상이고 반대하면 차단
+             # - 신호 강도 4: AI 신뢰도 70% 이상이고 반대하면 차단
+             # - 신호 강도 5: 항상 진입 (매우 강한 신호)
+             
+             signal_strength = tech_signal.get('strength', 1)
+             
+             if signal_strength >= 5:
+                 # Very strong signal - always proceed
                  final_action = rule_action_id
+                 reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
+                 logger.info(f"✅ Very Strong Signal (5+), AI filter bypassed")
+                 
+             elif ai_opposes:
+                 # AI opposes the signal
+                 if signal_strength <= 2:
+                     # Weak signal + AI opposition = BLOCK
+                     logger.warning(f"🚫 AI Blocked (Weak Signal): Rule={tech_signal['action']}, AI={ai_action_name} ({ai_confidence:.1%})")
+                     final_action = 0
+                     reason = "AI_BLOCKED_WEAK"
+                 elif signal_strength == 3 and ai_confidence >= 0.5:
+                     # Medium signal + confident AI opposition = BLOCK
+                     logger.warning(f"🚫 AI Blocked (Medium Signal): Rule={tech_signal['action']}, AI={ai_action_name} ({ai_confidence:.1%})")
+                     final_action = 0
+                     reason = "AI_BLOCKED_MEDIUM"
+                 elif signal_strength == 4 and ai_confidence >= 0.7:
+                     # Strong signal + very confident AI opposition = BLOCK
+                     logger.warning(f"🚫 AI Blocked (Strong Signal): Rule={tech_signal['action']}, AI={ai_action_name} ({ai_confidence:.1%})")
+                     final_action = 0
+                     reason = "AI_BLOCKED_STRONG"
+                 else:
+                     # Signal strong enough, proceed despite AI
+                     final_action = rule_action_id
+                     reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
+                     logger.info(f"⚠️ Proceeding despite AI opposition (Signal:{signal_strength}, AI Conf:{ai_confidence:.1%})")
+             
+             elif ai_agrees and ai_confidence >= 0.6:
+                 # AI agrees with high confidence - boost confidence
+                 final_action = rule_action_id
+                 reason = f"Rule+AI_{tech_signal.get('reason', 'Signal')}"
+                 logger.info(f"✅ AI Agreement Boost! (Confidence: {ai_confidence:.1%})")
+             
+             else:
+                 # Normal case - follow rule
+                 final_action = rule_action_id
+                 reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
                  
                  # --- LEVERAGE LOGIC (Enhanced with Regime) ---
                  if self.strategy_config.leverage_mode == "MANUAL":
@@ -856,6 +924,83 @@ class AutoTradingService:
     ):
         """Execute order based on action"""
         current_amt = position['position_amt']
+        
+        # 🔧 STEP 1: Check Total Position Exposure (NEW!)
+        if action in [1, 2] and current_amt == 0:  # New position entry
+            try:
+                account = await self.binance_client.get_account_info()
+                current_balance = account['balance']
+                
+                # Calculate current total exposure from all positions
+                positions = await self.binance_client.get_positions()
+                total_notional = 0.0
+                active_positions = 0
+                long_positions = 0
+                short_positions = 0
+                
+                for pos in positions:
+                    pos_amt = float(pos.get('positionAmt', 0))
+                    if abs(pos_amt) > 0:
+                        entry_price = float(pos.get('entryPrice', 0))
+                        notional = abs(pos_amt * entry_price)
+                        total_notional += notional
+                        active_positions += 1
+                        
+                        if pos_amt > 0:
+                            long_positions += 1
+                        else:
+                            short_positions += 1
+                
+                current_exposure_pct = total_notional / current_balance if current_balance > 0 else 0
+                
+                # 🔧 CHECK 1: Total Exposure Limit
+                max_exposure = self.risk_config.max_total_exposure
+                if current_exposure_pct >= max_exposure:
+                    logger.warning(
+                        f"🚫 Total Exposure Limit Reached! "
+                        f"Current: {current_exposure_pct*100:.1f}% >= Max: {max_exposure*100:.1f}% "
+                        f"({active_positions} active positions, ${total_notional:.0f})"
+                    )
+                    return
+                
+                # 🔧 CHECK 2: Directional Concentration (LONG/SHORT balance)
+                total_directional = long_positions + short_positions
+                if total_directional > 0:
+                    long_ratio = long_positions / total_directional
+                    short_ratio = short_positions / total_directional
+                    
+                    # Block if concentration > 75% (allow max 75:25 imbalance)
+                    if action == 1 and long_ratio > 0.75:  # Trying to open LONG
+                        logger.warning(
+                            f"🚫 LONG Concentration Too High! "
+                            f"L/S Ratio: {long_positions}/{short_positions} ({long_ratio*100:.0f}%/{short_ratio*100:.0f}%) "
+                            f"- Require stronger signal or wait for rebalance"
+                        )
+                        # Allow only if signal strength >= 5 (extremely strong)
+                        if signal_strength < 5:
+                            return
+                        else:
+                            logger.info("✅ Extremely strong signal (5+), allowing despite concentration")
+                    
+                    elif action == 2 and short_ratio > 0.75:  # Trying to open SHORT
+                        logger.warning(
+                            f"🚫 SHORT Concentration Too High! "
+                            f"L/S Ratio: {long_positions}/{short_positions} ({long_ratio*100:.0f}%/{short_ratio*100:.0f}%) "
+                            f"- Require stronger signal or wait for rebalance"
+                        )
+                        if signal_strength < 5:
+                            return
+                        else:
+                            logger.info("✅ Extremely strong signal (5+), allowing despite concentration")
+                
+                logger.info(
+                    f"📊 Exposure Check: {current_exposure_pct*100:.1f}%/{max_exposure*100:.1f}% | "
+                    f"Positions: {active_positions} (L:{long_positions} S:{short_positions})"
+                )
+                
+            except Exception as e:
+                logger.error(f"Exposure check failed: {e}, proceeding with caution")
+        # ----------------------------------------
         
         async def _round_quantity(sym: str, qty: float):
             try:
