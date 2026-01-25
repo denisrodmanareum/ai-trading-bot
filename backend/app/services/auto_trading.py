@@ -30,6 +30,7 @@ from ai.performance_monitor import PerformanceMonitor  # 🆕 Phase 2
 from ai.hybrid_ai import HybridAI  # 🆕 Phase 3
 from ai.backtest_engine import BacktestEngine  # 🆕 Phase 3
 from ai.parameter_optimizer import ParameterOptimizer  # 🆕 Phase 3
+from app.services.balance_strategy import BalanceBasedStrategyManager  # 🆕 잔고 기반 동적 전략
 import os
 import pandas as pd
 
@@ -303,6 +304,10 @@ class AutoTradingService:
         
         # Circuit Breaker
         self.circuit_breaker = CircuitBreaker()
+        
+        # 🆕 Balance-Based Strategy Manager (잔고 티어 시스템)
+        self.balance_strategy = BalanceBasedStrategyManager()
+        logger.info("✅ Balance-Based Strategy Manager initialized")
         
         # 🔧 FIX: Remove allowed_symbols restriction - use coin_selector instead
         # This was blocking all trading signals!
@@ -622,6 +627,17 @@ class AutoTradingService:
         # 🔧 Note: Symbol already checked in process_market_data, no need to check again
         # This was causing double-filtering
         
+        # 🆕 일일 거래 제한 체크 (Balance-Based Strategy)
+        try:
+            account = await self.exchange_client.get_account_info()
+            current_balance = account.get('balance', 5000.0)
+            can_trade, limit_msg = self.balance_strategy.check_daily_trade_limit(current_balance)
+            if not can_trade:
+                logger.warning(f"⚠️ {symbol}: {limit_msg}")
+                return
+        except Exception as e:
+            logger.debug(f"Daily trade limit check failed: {e}")
+        
         # 1. Get current position
         position = await self.exchange_client.get_position(symbol)
         if position is None:
@@ -884,26 +900,43 @@ class AutoTradingService:
                      leverage = self.strategy_config.manual_leverage
                  else:
                      base_leverage = tech_signal.get('leverage', 5)
-                     # 1. Regime Adjustment
-                     leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime, symbol)
-                     
-                     # 2. 🔧 AI Confidence Boost (Core vs Alt Differentiation)
                      is_core = symbol in self.risk_config.core_coins
                      
-                     if is_core:
-                         # Core Coins: Up to 20x for high-conviction
-                         if ai_agrees and ai_confidence >= 0.90:
-                             leverage = min(20, int(leverage * 1.5))
-                             logger.info(f"🚀 High Confidence Boost (Core)! Leverage increased to {leverage}x")
-                         elif ai_agrees and ai_confidence >= 0.80:
-                             leverage = min(15, int(leverage * 1.2))
-                             logger.info(f"📈 Moderate Confidence Boost (Core). Leverage increased to {leverage}x")
-                     else:
-                         # Altcoins: Strictly capped at 5x for safety
-                         leverage = min(5, leverage)
-                         logger.info(f"🛡️ Altcoin Safety Cap: Leverage restricted to {leverage}x")
-                     
-                     logger.info(f"Final Leverage ({'Core' if is_core else 'Alt'}): {leverage}x (Symbol: {symbol})")
+                     # 🆕 잔고 기반 동적 레버리지 (AI + 변동성 + 신호 강도 종합)
+                     try:
+                         account = await self.exchange_client.get_account_info()
+                         current_balance = account['balance']
+                         
+                         # 시장 변동성 계산 (간단히 ATR 비율 사용)
+                         market_volatility = market_state.get('atr', 0.02) / float(data.get('close', 1))
+                         
+                         # AI 동적 레버리지 계산
+                         leverage = self.balance_strategy.calculate_dynamic_leverage(
+                             balance=current_balance,
+                             ai_confidence=ai_confidence,
+                             signal_strength=signal_strength,
+                             market_volatility=market_volatility,
+                             is_core=is_core
+                         )
+                         
+                         logger.info(
+                             f"🎲 Dynamic Leverage: {leverage}x "
+                             f"(Balance: {current_balance:.0f} USDT, "
+                             f"AI Conf: {ai_confidence:.1%}, "
+                             f"Signal: {signal_strength}/5, "
+                             f"Vol: {market_volatility:.2%})"
+                         )
+                     except Exception as e:
+                         logger.warning(f"Dynamic leverage calculation failed: {e}, using fallback")
+                         # Fallback: 기존 로직
+                         leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime, symbol)
+                         if is_core:
+                             if ai_agrees and ai_confidence >= 0.90:
+                                 leverage = min(20, int(leverage * 1.5))
+                             elif ai_agrees and ai_confidence >= 0.80:
+                                 leverage = min(15, int(leverage * 1.2))
+                         else:
+                             leverage = min(5, leverage)
                  # ----------------------
                  
                  reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
@@ -1143,42 +1176,40 @@ class AutoTradingService:
             current_balance = 5000.0  # Fallback
         
         if self.risk_config.position_mode == "ADAPTIVE":
-            # 🔧 AI ADAPTIVE MODE: 코어코인과 알트코인 차등 배분 + AI 확신도 반영
+            # 🆕 잔고 기반 동적 포지션 사이징 (AI 확신도 + 최근 성과 반영)
             try:
                 # 코어코인 여부 확인
                 is_core = symbol in self.risk_config.core_coins
                 
-                # AI 확신도 가중치 (60% 이하는 패널티, 85% 이상은 보너스)
-                # ai_confidence는 0.0 ~ 1.0 범위
-                ai_weight = 1.0
-                if market_state:
-                    # live_predict에서 계산된 confidence 가져오기 (만약 market_state에 없다면 기본 1.0)
-                    conf = market_state.get('ai_confidence', 0.7) 
-                    if conf >= 0.90:
-                        ai_weight = 1.5  # 초강력 확신: 1.5배
-                    elif conf >= 0.80:
-                        ai_weight = 1.2  # 강력 확신: 1.2배
-                    elif conf <= 0.60:
-                        ai_weight = 0.7  # 낮은 확신: 0.7배
+                # AI 확신도 가져오기
+                ai_conf = market_state.get('ai_confidence', 0.7) if market_state else 0.7
                 
-                if is_core:
-                    # 코어코인: 높은 비율 (기본 5%) × AI 가중치
-                    base_notional = current_balance * self.risk_config.core_coin_ratio * ai_weight
-                    coin_type = "Core"
-                    ratio_pct = (self.risk_config.core_coin_ratio * ai_weight) * 100
-                else:
-                    # 알트코인: 낮은 비율 (기본 2%) × AI 가중치
-                    base_notional = current_balance * self.risk_config.alt_coin_ratio * ai_weight
-                    coin_type = "Alt"
-                    ratio_pct = (self.risk_config.alt_coin_ratio * ai_weight) * 100
+                # 🆕 Balance-Based Dynamic Position Sizing
+                base_notional = self.balance_strategy.calculate_dynamic_position_size(
+                    balance=current_balance,
+                    ai_confidence=ai_conf,
+                    is_core=is_core
+                )
                 
+                # 티어 정보 로깅
+                tier_info = self.balance_strategy.get_current_tier(current_balance)
                 logger.info(
-                    f"💰 Adaptive Sizing [{coin_type}]: {symbol} = "
-                    f"{current_balance:.0f} × {ratio_pct:.1f}% (AI Weight: {ai_weight:.1f}) = {base_notional:.0f} USDT"
+                    f"💰 Dynamic Sizing [{tier_info['tier_name']} Tier]: {symbol} = "
+                    f"{base_notional:.0f} USDT "
+                    f"(Balance: {current_balance:.0f}, AI Conf: {ai_conf:.1%}, "
+                    f"Recent Winrate: {self.balance_strategy.get_recent_winrate():.1%})"
                 )
             except Exception as e:
-                logger.warning(f"Adaptive sizing failed: {e}, using fallback")
-                base_notional = current_balance * 0.03  # 3% fallback
+                logger.warning(f"Dynamic sizing failed: {e}, using fallback")
+                # Fallback: 기존 로직
+                is_core = symbol in self.risk_config.core_coins
+                ai_conf = market_state.get('ai_confidence', 0.7) if market_state else 0.7
+                ai_weight = 1.5 if ai_conf >= 0.90 else (1.2 if ai_conf >= 0.80 else (0.7 if ai_conf <= 0.60 else 1.0))
+                
+                if is_core:
+                    base_notional = current_balance * self.risk_config.core_coin_ratio * ai_weight
+                else:
+                    base_notional = current_balance * self.risk_config.alt_coin_ratio * ai_weight
                 
         elif self.risk_config.position_mode == "RATIO":
             # RATIO mode: 잔고의 고정 %
@@ -2291,6 +2322,14 @@ class AutoTradingService:
             msg += f"종료사유: <code>{reason}</code>"
             if notification_manager.enabled_channels.get("telegram", False):
                 await notification_manager.send(NotificationType.POSITION_CLOSED, "Exit", msg, channels=["telegram"])
+            
+            # 🆕 거래 결과 기록 (Balance-Based Strategy)
+            try:
+                is_win = pnl > 0
+                self.balance_strategy.add_trade_result(symbol, float(pnl), is_win)
+                logger.debug(f"📊 Trade result recorded: {symbol} {'WIN' if is_win else 'LOSS'} (PnL: {pnl:+.2f})")
+            except Exception as record_err:
+                logger.debug(f"Failed to record trade result: {record_err}")
         except Exception:
             pass
 
