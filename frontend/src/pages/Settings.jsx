@@ -721,17 +721,19 @@ function Settings() {
                     <button
                       key={ex}
                       onClick={() => setApiConfig({ ...apiConfig, active_exchange: ex })}
+                      disabled={ex === 'BYBIT'}  // 🔒 BYBIT 임시 비활성화
                       style={{
                         flex: 1,
                         padding: '1rem',
                         background: apiConfig.active_exchange === ex ? 'rgba(240, 185, 11, 0.1)' : '#0a0a0a',
                         border: `1px solid ${apiConfig.active_exchange === ex ? '#f0b90b' : '#222'}`,
-                        color: apiConfig.active_exchange === ex ? '#f0b90b' : '#666',
+                        color: ex === 'BYBIT' ? '#333' : (apiConfig.active_exchange === ex ? '#f0b90b' : '#666'),
                         borderRadius: '4px',
-                        cursor: 'pointer',
+                        cursor: ex === 'BYBIT' ? 'not-allowed' : 'pointer',
                         fontWeight: '900',
                         fontSize: '0.9rem',
-                        transition: 'all 0.2s'
+                        transition: 'all 0.2s',
+                        opacity: ex === 'BYBIT' ? 0.5 : 1
                       }}
                     >
                       {ex}
