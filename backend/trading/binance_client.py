@@ -171,6 +171,32 @@ class BinanceClient:
         )
         logger.info(f"Order placed: {side} {quantity} {symbol} (reduce_only={reduce_only})")
         return order
+    
+    async def place_stop_market_order(self, symbol, side, quantity, stop_price, reduce_only=False):
+        """
+        Place stop market order for SL
+        
+        Args:
+            symbol: Trading symbol
+            side: "BUY" or "SELL"
+            quantity: Order quantity
+            stop_price: Stop trigger price
+            reduce_only: Reduce only mode
+        """
+        try:
+            order = await self.client.futures_create_order(
+                symbol=symbol,
+                side=side,
+                type="STOP_MARKET",
+                quantity=quantity,
+                stopPrice=stop_price,
+                reduceOnly='true' if reduce_only else 'false'
+            )
+            logger.info(f"Stop Market Order placed: {side} {quantity} @ {stop_price} {symbol}")
+            return order
+        except Exception as e:
+            logger.error(f"Failed to place stop market order: {e}")
+            raise
 
     async def place_bracket_orders(
         self,
@@ -333,22 +359,57 @@ class BinanceClient:
             logger.error(f"Failed to get order book: {e}")
             return {"bids": [], "asks": []}
 
-    async def place_limit_order(self, symbol, side, quantity, price):
+    async def get_ticker(self, symbol: str):
+        """Get ticker price"""
+        try:
+            ticker = await self.client.futures_symbol_ticker(symbol=symbol)
+            return {
+                'symbol': ticker['symbol'],
+                'price': float(ticker['price']),
+                'bidPrice': float(ticker.get('bidPrice', ticker['price'])),
+                'askPrice': float(ticker.get('askPrice', ticker['price']))
+            }
+        except Exception as e:
+            logger.error(f"Failed to get ticker for {symbol}: {e}")
+            return {'symbol': symbol, 'price': 0, 'bidPrice': 0, 'askPrice': 0}
+    
+    async def get_orderbook(self, symbol: str, limit: int = 20):
+        """Get order book"""
+        try:
+            orderbook = await self.client.futures_order_book(symbol=symbol, limit=limit)
+            return {
+                'symbol': symbol,
+                'bids': orderbook['bids'],
+                'asks': orderbook['asks']
+            }
+        except Exception as e:
+            logger.error(f"Failed to get orderbook for {symbol}: {e}")
+            return {'symbol': symbol, 'bids': [], 'asks': []}
+    
+    async def place_limit_order(self, symbol, side, quantity, price, time_in_force='GTC', reduce_only=False):
         """Place limit order"""
         try:
-            order = await self.client.futures_create_order(
-                symbol=symbol,
-                side=side,
-                type="LIMIT",
-                timeInForce="GTC", # Good Till Cancel
-                quantity=quantity,
-                price=price
-            )
+            params = {
+                'symbol': symbol,
+                'side': side,
+                'type': 'LIMIT',
+                'timeInForce': time_in_force,
+                'quantity': quantity,
+                'price': price
+            }
+            if reduce_only:
+                params['reduceOnly'] = 'true'
+            
+            order = await self.client.futures_create_order(**params)
             logger.info(f"Limit Order placed: {side} {quantity} @ {price} {symbol}")
             return order
         except Exception as e:
             logger.error(f"Failed to place limit order: {e}")
             raise
+    
+    async def get_orderbook(self, symbol: str, limit: int = 20):
+        """Alias for get_order_book (for compatibility)"""
+        return await self.get_order_book(symbol, limit)
 
     async def get_open_orders(self, symbol="BTCUSDT"):
         """Get open orders"""

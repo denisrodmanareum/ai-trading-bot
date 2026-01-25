@@ -37,13 +37,26 @@ class Trade(Base):
     
     # Results
     pnl = Column(Float, nullable=True)
+    roi = Column(Float, nullable=True)  # 🆕 Return on Investment (%)
     commission = Column(Float, default=0.0)
     
     # Context
     strategy = Column(String, default="ai_ppo") # ai_ppo, manual, etc
     reason = Column(String, nullable=True)
     
+    # Timing
+    entry_time = Column(DateTime, nullable=True)  # 🆕
+    exit_time = Column(DateTime, nullable=True)   # 🆕
+    status = Column(String, default="OPEN")       # 🆕 OPEN, CLOSED
+    
     timestamp = Column(DateTime, default=datetime.utcnow)
+
+class TradeState(Base):
+    __tablename__ = "trade_states"
+    
+    symbol = Column(String, primary_key=True, index=True)
+    data = Column(String) # JSON string of the brackets dict
+    updated_at = Column(DateTime, default=datetime.utcnow)
     
 class ModelMeta(Base):
     __tablename__ = "model_metadata"

@@ -44,7 +44,12 @@ class EnsembleAgent:
         actions = []
         for agent in self.agents:
             try:
-                action = agent.live_predict(market_data)
+                # TradingAgent now returns (action, confidence)
+                result = agent.live_predict(market_data)
+                if isinstance(result, tuple):
+                    action, _ = result
+                else:
+                    action = result
                 actions.append(action)
             except Exception as e:
                 logger.error(f"Agent prediction failed: {e}")
