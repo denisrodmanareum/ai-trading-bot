@@ -43,7 +43,7 @@ class StochasticTradingStrategy:
                     return {
                         "action": "LONG",
                         "strength": 3,
-                        "leverage": 5,
+                        "leverage": 3,  # 🔧 5x → 3x (Pump 끝자락 진입 위험 감소)
                         "reason": "🚀 Momentum Pump (Vol+Acc)"
                     }
                 # DUMP (Accelerating Down)
@@ -51,7 +51,7 @@ class StochasticTradingStrategy:
                      return {
                         "action": "SHORT",
                         "strength": 3,
-                        "leverage": 5,
+                        "leverage": 3,  # 🔧 5x → 3x (Dump 반전 위험 감소)
                         "reason": "📉 Momentum Dump (Vol+Acc)"
                     }
         except Exception as e:

@@ -162,6 +162,8 @@ class AutoTradingService:
         self.trade_stats = {"total": 0, "wins": 0}
         self.last_trade_ts: float = 0.0
         self.position_open_ts: dict[str, float] = {}
+        # 🔧 Track last trade time per symbol (prevent duplicate trades)
+        self.last_trade_time_per_symbol: dict[str, float] = {}
         # Track per-symbol bracket orders (TP/SL)
         # { "BTCUSDT": {"side":"LONG","qty":0.01,"entry_price":65000,"tp":66000,"sl":64500,"tp_order_id":123,"sl_order_id":456,"entry_ts":...}}
         self.brackets: dict[str, Dict] = {}
@@ -825,31 +827,68 @@ class AutoTradingService:
             except:
                 return round(qty, 3)
 
-        # Quantity logic
-        # 1. Calculate Target Notional Value
+        # Quantity logic - 🔧 ENHANCED: Dynamic position sizing
+        # 1. Calculate Base Target Notional Value
         if self.risk_config.position_mode == "RATIO":
-            # Use a percentage of the start balance (or current balance)
-            # Fetching current account for most accurate balance
             try:
                 account = await self.binance_client.get_account_info()
                 current_balance = account['balance']
-                target_notional = current_balance * self.risk_config.position_ratio
+                base_notional = current_balance * self.risk_config.position_ratio
             except:
-                target_notional = 150.0 # Fallback
+                base_notional = 150.0 # Fallback
         else:
             # FIXED mode
-            target_notional = 150.0
+            base_notional = 150.0
 
-        # 2. Ensure min notional > 100 USDT (Binance Testnet Limit)
-        # Using 120 as a safe floor even in RATIO mode
+        # 2. 🔧 Dynamic Adjustment: Signal Strength × Volatility
+        # - 강한 신호 (4~5점): +30~50%
+        # - 중간 신호 (2~3점): 기본
+        # - 약한 신호 (1점): -30%
+        signal_multiplier = 1.0
+        if signal_strength >= 5:
+            signal_multiplier = 1.5  # +50%
+        elif signal_strength == 4:
+            signal_multiplier = 1.3  # +30%
+        elif signal_strength <= 1:
+            signal_multiplier = 0.7  # -30%
+        
+        # 3. 🔧 Volatility Adjustment: 고변동성 코인 포지션 축소
+        volatility_multiplier = 1.0
+        if atr > 0 and market_state:
+            atr_pct = (atr / price) * 100  # ATR을 %로 변환
+            if atr_pct > 5.0:  # 매우 높은 변동성 (5% 이상)
+                volatility_multiplier = 0.6  # -40%
+                logger.info(f"🔻 High Volatility: ATR {atr_pct:.2f}%, reducing position by 40%")
+            elif atr_pct > 3.0:  # 높은 변동성 (3~5%)
+                volatility_multiplier = 0.8  # -20%
+                logger.info(f"⚠️ Medium Volatility: ATR {atr_pct:.2f}%, reducing position by 20%")
+        
+        # 4. Final calculation
+        target_notional = base_notional * signal_multiplier * volatility_multiplier
+        
+        # 5. Ensure min notional > 100 USDT (Binance Testnet Limit)
         safe_notional = max(target_notional, 120.0) 
         
         min_qty = safe_notional / price
         quantity = max(0.002, min_qty) # Ensure at least 0.002 BTC
         quantity = round(quantity, 3) # Specific for BTC (3 decimal places)
+        
+        logger.info(f"📊 Position Sizing: Base={base_notional:.0f}, Signal×{signal_multiplier:.1f}, Vol×{volatility_multiplier:.1f} → Final={safe_notional:.0f} USDT")
 
         quantity = await _round_quantity(symbol, quantity)
             
+        # 🔧 Check duplicate trade prevention (15 min cooldown)
+        MIN_RETRADE_MINUTES = 15
+        last_trade_ts = self.last_trade_time_per_symbol.get(symbol, 0)
+        time_since_last = (time.time() - last_trade_ts) / 60.0  # minutes
+        
+        if action in [1, 2] and last_trade_ts > 0 and time_since_last < MIN_RETRADE_MINUTES:
+            logger.warning(
+                f"⏸️ Duplicate Trade Prevention: {symbol} last traded {time_since_last:.1f}m ago "
+                f"(need {MIN_RETRADE_MINUTES}m cooldown)"
+            )
+            return
+        
         try:
             if action == 1: # LONG
                 if current_amt <= 0: # If short or flat
@@ -871,6 +910,8 @@ class AutoTradingService:
                     # Open long
                     order = await self.binance_client.place_market_order(symbol, "BUY", quantity)
                     logger.info("Executed LONG")
+                    # 🔧 Record trade time for duplicate prevention
+                    self.last_trade_time_per_symbol[symbol] = time.time()
                     await self._broadcast_trade("LONG", symbol, quantity, order)
                     entry_price, tp_price, sl_price = await self._setup_bracket_after_entry(
                         symbol=symbol,
@@ -917,6 +958,8 @@ class AutoTradingService:
                     # Open short
                     order = await self.binance_client.place_market_order(symbol, "SELL", quantity)
                     logger.info("Executed SHORT")
+                    # 🔧 Record trade time for duplicate prevention
+                    self.last_trade_time_per_symbol[symbol] = time.time()
                     await self._broadcast_trade("SHORT", symbol, quantity, order)
                     entry_price, tp_price, sl_price = await self._setup_bracket_after_entry(
                         symbol=symbol,
