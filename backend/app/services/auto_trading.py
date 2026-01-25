@@ -884,9 +884,19 @@ class AutoTradingService:
                      leverage = self.strategy_config.manual_leverage
                  else:
                      base_leverage = tech_signal.get('leverage', 5)
-                     # Adjust leverage based on market regime and coin type
-                     leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime, symbol)
-                     logger.info(f"Leverage adjusted by regime: {base_leverage} -> {leverage}x (Symbol: {symbol})")
+                      # 1. Regime Adjustment
+                      leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime, symbol)
+                      
+                      # 2. 🔧 AI Confidence Boost (NEW!)
+                      # AI 확신도가 매우 높으면(90%+) 레버리지를 추가로 1.2~1.5배 상향 (최대 20배 제한)
+                      if ai_agrees and ai_confidence >= 0.90:
+                          leverage = min(20, int(leverage * 1.5))
+                          logger.info(f"🚀 High Confidence Boost! Leverage increased to {leverage}x")
+                      elif ai_agrees and ai_confidence >= 0.80:
+                          leverage = min(15, int(leverage * 1.2))
+                          logger.info(f"📈 Moderate Confidence Boost. Leverage increased to {leverage}x")
+                      
+                      logger.info(f"Final Leverage (Regime+AI): {leverage}x (Symbol: {symbol})")
                  # ----------------------
                  
                  reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
