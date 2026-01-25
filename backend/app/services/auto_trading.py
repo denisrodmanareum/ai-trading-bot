@@ -884,19 +884,26 @@ class AutoTradingService:
                      leverage = self.strategy_config.manual_leverage
                  else:
                      base_leverage = tech_signal.get('leverage', 5)
-                      # 1. Regime Adjustment
-                      leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime, symbol)
-                      
-                      # 2. 🔧 AI Confidence Boost (NEW!)
-                      # AI 확신도가 매우 높으면(90%+) 레버리지를 추가로 1.2~1.5배 상향 (최대 20배 제한)
-                      if ai_agrees and ai_confidence >= 0.90:
-                          leverage = min(20, int(leverage * 1.5))
-                          logger.info(f"🚀 High Confidence Boost! Leverage increased to {leverage}x")
-                      elif ai_agrees and ai_confidence >= 0.80:
-                          leverage = min(15, int(leverage * 1.2))
-                          logger.info(f"📈 Moderate Confidence Boost. Leverage increased to {leverage}x")
-                      
-                      logger.info(f"Final Leverage (Regime+AI): {leverage}x (Symbol: {symbol})")
+                     # 1. Regime Adjustment
+                     leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime, symbol)
+                     
+                     # 2. 🔧 AI Confidence Boost (Core vs Alt Differentiation)
+                     is_core = symbol in self.risk_config.core_coins
+                     
+                     if is_core:
+                         # Core Coins: Up to 20x for high-conviction
+                         if ai_agrees and ai_confidence >= 0.90:
+                             leverage = min(20, int(leverage * 1.5))
+                             logger.info(f"🚀 High Confidence Boost (Core)! Leverage increased to {leverage}x")
+                         elif ai_agrees and ai_confidence >= 0.80:
+                             leverage = min(15, int(leverage * 1.2))
+                             logger.info(f"📈 Moderate Confidence Boost (Core). Leverage increased to {leverage}x")
+                     else:
+                         # Altcoins: Strictly capped at 5x for safety
+                         leverage = min(5, leverage)
+                         logger.info(f"🛡️ Altcoin Safety Cap: Leverage restricted to {leverage}x")
+                     
+                     logger.info(f"Final Leverage ({'Core' if is_core else 'Alt'}): {leverage}x (Symbol: {symbol})")
                  # ----------------------
                  
                  reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
