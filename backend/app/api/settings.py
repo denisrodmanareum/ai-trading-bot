@@ -343,7 +343,11 @@ async def update_api_config(config: ApiConfigUpdate):
             
         # 3. Reload Exchange Client
         from trading.exchange_factory import ExchangeFactory
-        await ExchangeFactory.reload()
+        new_client = await ExchangeFactory.reload()
+        
+        # SYNC with main global reference and dependent services
+        import app.main as main
+        main.update_global_exchange_client(new_client)
         
         return {"status": "success", "message": f"Updated to {config.active_exchange}"}
 

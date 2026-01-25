@@ -180,6 +180,28 @@ app.add_middleware(
 )
 
 
+
+def update_global_exchange_client(new_client):
+    """
+    Update the global exchange client and propagate to all dependent services.
+    This is called when configuration changes (e.g. API keys or active exchange).
+    """
+    global exchange_client, price_service, auto_trading_service
+    
+    logger.info("🔄 Propagating new exchange client to all services...")
+    exchange_client = new_client
+    
+    if price_service:
+        price_service.client = new_client
+        logger.info("✅ Updated PriceStreamService client")
+        
+    if auto_trading_service:
+        auto_trading_service.client = new_client
+        logger.info("✅ Updated AutoTradingService client")
+    
+    return True
+
+
 # Health check
 @app.get("/health")
 async def health_check():
