@@ -4,6 +4,7 @@ Simplified Binance Futures Client
 from binance import AsyncClient
 from loguru import logger
 import time
+from typing import Dict, List
 from app.core.config import settings
 from trading.base_client import BaseExchangeClient
 
