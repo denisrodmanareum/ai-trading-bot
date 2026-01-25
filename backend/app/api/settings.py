@@ -250,8 +250,6 @@ async def test_telegram_notification(req: TelegramTestRequest):
         return {"status": "sent"}
     except HTTPException:
         raise
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Telegram test failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))

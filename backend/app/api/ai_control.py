@@ -581,8 +581,8 @@ async def batch_delete_models(request: BatchDeleteRequest):
                     
                     deleted_count += 1
             except HTTPException:
-        raise
-    except Exception as e:
+                raise
+            except Exception as e:
                 errors.append(f"{name}: {str(e)}")
         
         return {
