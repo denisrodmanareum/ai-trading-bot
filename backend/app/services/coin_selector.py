@@ -18,7 +18,7 @@ class CoinSelector:
     
     def __init__(self):
         self.coingecko_base = "https://api.coingecko.com/api/v3"
-        self.binance_base = "https://fapi.binance.com/fapi/v1"
+        self.public_api_base = "https://fapi.binance.com/fapi/v1"
         
         # Default configuration
         self.config = {
@@ -81,8 +81,8 @@ class CoinSelector:
         logger.info("🔄 Rebalancing coin selection...")
         
         try:
-            # Get all available futures symbols from Binance
-            futures_symbols = await self._get_binance_futures_symbols()
+            # Get all available futures symbols from Exchange
+            futures_symbols = await self._get_exchange_futures_symbols()
             
             # Get market data from CoinGecko
             market_data = await self._get_coingecko_market_data()
@@ -111,12 +111,12 @@ class CoinSelector:
             # Fallback to default
             return self._get_fallback_selection()
     
-    async def _get_binance_futures_symbols(self) -> List[str]:
-        """Get all USDT futures symbols from Binance"""
+    async def _get_exchange_futures_symbols(self) -> List[str]:
+        """Get all USDT futures symbols from Exchange"""
         try:
             timeout = aiohttp.ClientTimeout(total=10)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                url = f"{self.binance_base}/exchangeInfo"
+                url = f"{self.public_api_base}/exchangeInfo"
                 async with session.get(url) as response:
                     if response.status == 200:
                         data = await response.json()
@@ -127,7 +127,7 @@ class CoinSelector:
                         logger.info(f"Found {len(symbols)} active USDT futures pairs")
                         return symbols
         except Exception as e:
-            logger.error(f"Failed to get Binance symbols: {e}")
+            logger.error(f"Failed to get Exchange symbols: {e}")
         
         return []
     
@@ -156,7 +156,7 @@ class CoinSelector:
         
         return []
     
-    async def _score_coins(self, binance_symbols: List[str], coingecko_data: List[Dict]) -> List[Dict]:
+    async def _score_coins(self, exchange_symbols: List[str], coingecko_data: List[Dict]) -> List[Dict]:
         """
         Score coins based on multiple criteria
         
@@ -195,10 +195,10 @@ class CoinSelector:
             try:
                 coin_id = coin.get('id', '')
                 symbol = symbol_map.get(coin_id, coin.get('symbol', '').upper())
-                binance_symbol = f"{symbol}USDT"
+                exchange_symbol = f"{symbol}USDT"
                 
-                # Check if available on Binance Futures
-                if binance_symbol not in binance_symbols:
+                # Check if available on Exchange Futures
+                if exchange_symbol not in exchange_symbols:
                     continue
                 
                 # Apply filters
@@ -221,7 +221,7 @@ class CoinSelector:
                 score = self._calculate_score(coin)
                 
                 scored.append({
-                    'symbol': binance_symbol,
+                    'symbol': exchange_symbol,
                     'base_symbol': symbol,
                     'score': score,
                     'metrics': {

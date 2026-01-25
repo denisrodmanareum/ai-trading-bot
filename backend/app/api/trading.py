@@ -16,7 +16,7 @@ async def get_trading_symbols():
         import app.main as main
         
         if main.exchange_client is None:
-            # Return default symbols if binance not initialized
+            # Return default symbols if exchange not initialized
             return {
                 "symbols": [
                     "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "ADAUSDT",
@@ -73,7 +73,7 @@ async def place_order(order: OrderRequest):
         import app.main as main
         
         if main.exchange_client is None:
-            raise HTTPException(status_code=503, detail="Binance not connected")
+            raise HTTPException(status_code=503, detail="Exchange not connected")
         
         if order.order_type.upper() == "LIMIT":
             if not order.price or order.price <= 0:
@@ -105,7 +105,7 @@ async def close_position():
         import app.main as main
         
         if main.exchange_client is None:
-            raise HTTPException(status_code=503, detail="Binance not connected")
+            raise HTTPException(status_code=503, detail="Exchange not connected")
         
         positions = await main.exchange_client.get_all_positions()
         
@@ -168,7 +168,7 @@ async def get_price(symbol: str):
         import app.main as main
         
         if main.exchange_client is None:
-            raise HTTPException(status_code=503, detail="Binance not connected")
+            raise HTTPException(status_code=503, detail="Exchange not connected")
         
         price = await main.exchange_client.get_current_price(symbol)
         return {"symbol": symbol, "price": price}
@@ -185,7 +185,7 @@ async def get_order_book(symbol: str):
         import app.main as main
         
         if main.exchange_client is None:
-            raise HTTPException(status_code=503, detail="Binance not connected")
+            raise HTTPException(status_code=503, detail="Exchange not connected")
         
         depth = await main.exchange_client.get_order_book(symbol)
         return depth
@@ -378,13 +378,13 @@ async def update_strategy_config(config: StrategyConfigRequest):
 
 @router.post("/sync")
 async def sync_data():
-    """Force sync data from Binance (clears ghost records)"""
+    """Force sync data from Exchange (clears ghost records)"""
     try:
         import app.main as main
         if main.exchange_client is None:
-             raise HTTPException(status_code=503, detail="Binance not connected")
+             raise HTTPException(status_code=503, detail="Exchange not connected")
              
-        # Fetch real trades from Binance (includes Realized PnL & Commission)
+        # Fetch real trades from Exchange (includes Realized PnL & Commission)
         user_trades = await main.exchange_client.get_user_trades("BTCUSDT", limit=50)
         
         from app.database import SessionLocal
@@ -414,24 +414,24 @@ async def sync_data():
                 # Let's delete all first? No, that deletes 'Reason'.
                 # Let's just update the latest trades or insert.
                 
-                # Compromise: Delete all trades from DB and refill from Binance for accuracy of PnL.
-                # But we lose "Reason". 
-                # User cares more about PnL.
-                pass
+            # Compromise: Delete all trades from DB and refill from Exchange for accuracy of PnL.
+            # But we lose "Reason". 
+            # User cares more about PnL.
+            pass
 
-            # STRATEGY: Wipe and Refill Last 50 Trades to ensure PnL is correct.
-            # Warning: Loses 'Strategy' and 'Reason' metadata if not careful.
-            # But since current data is ghost/broken, refill is better.
-            
-            # await session.execute("DELETE FROM trades") # too dangerous?
-            # Let's just add them and let user clear history if they want.
-            # Wait, user sees "0.00". 
-            
-            # Better: Just update PnL on existing trades?
-            # Timestamps won't match exactly between internal Log and Binance execution time.
-            
-            # BEST: Just Insert new 'Realized' trades from Binance.
-            # And user can "Clear History" to remove the ghost ones.
+        # STRATEGY: Wipe and Refill Last 50 Trades to ensure PnL is correct.
+        # Warning: Loses 'Strategy' and 'Reason' metadata if not careful.
+        # But since current data is ghost/broken, refill is better.
+        
+        # await session.execute("DELETE FROM trades") # too dangerous?
+        # Let's just add them and let user clear history if they want.
+        # Wait, user sees "0.00". 
+        
+        # Better: Just update PnL on existing trades?
+        # Timestamps won't match exactly between internal Log and Exchange execution time.
+        
+        # BEST: Just Insert new 'Realized' trades from Exchange.
+        # And user can "Clear History" to remove the ghost ones.
             pass
 
             # IMPLEMENTATION:
@@ -487,7 +487,7 @@ async def get_open_orders(symbol: str = "BTCUSDT"):
     try:
         import app.main as main
         if main.exchange_client is None:
-             raise HTTPException(status_code=503, detail="Binance not connected")
+             raise HTTPException(status_code=503, detail="Exchange not connected")
              
         orders = await main.exchange_client.get_open_orders(symbol)
         return orders
@@ -501,7 +501,7 @@ async def get_active_positions():
     try:
         import app.main as main
         if main.exchange_client is None:
-             raise HTTPException(status_code=503, detail="Binance not connected")
+             raise HTTPException(status_code=503, detail="Exchange not connected")
              
         positions = await main.exchange_client.get_all_positions()
         return positions
@@ -515,7 +515,7 @@ async def cancel_order(symbol: str, order_id: int):
     try:
         import app.main as main
         if main.exchange_client is None:
-             raise HTTPException(status_code=503, detail="Binance not connected")
+             raise HTTPException(status_code=503, detail="Exchange not connected")
              
         result = await main.exchange_client.cancel_order(symbol, order_id)
         return result
@@ -529,9 +529,9 @@ async def cancel_all_orders(symbol: str = "BTCUSDT"):
     try:
         import app.main as main
         if main.exchange_client is None:
-             raise HTTPException(status_code=503, detail="Binance not connected")
+             raise HTTPException(status_code=503, detail="Exchange not connected")
         
-        # Binance API usually has cancelAll, but we can loop if client doesn't support it directly yet.
+        # Exchange API usually has cancelAll, but we can loop if client doesn't support it directly yet.
         # Our simplified client doesn't have cancel_all, so we fetch and loop.
         orders = await main.exchange_client.get_open_orders(symbol)
         results = []
@@ -550,7 +550,7 @@ async def close_specific_position(symbol: str):
     try:
         import app.main as main
         if main.exchange_client is None:
-             raise HTTPException(status_code=503, detail="Binance not connected")
+             raise HTTPException(status_code=503, detail="Exchange not connected")
              
         position = await main.exchange_client.get_position(symbol)
         amt = position['position_amt']

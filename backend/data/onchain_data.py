@@ -21,8 +21,8 @@ class OnChainDataAnalyzer:
         self.whale_alert_base = "https://api.whale-alert.io/v1"
         self.whale_alert_key = "demo"  # 실제 사용 시 API 키 필요
         
-        # Binance API for funding rate
-        self.binance_base = "https://fapi.binance.com/fapi/v1"
+        # Exchange API for funding rate
+        self.public_api_base = "https://fapi.binance.com/fapi/v1"
     
     async def get_whale_activities(self, hours_ago: int = 24, min_usd: int = 1000000) -> List[Dict]:
         """
@@ -63,7 +63,7 @@ class OnChainDataAnalyzer:
         """Mock whale data for demonstration"""
         import random
         
-        exchanges = ['Binance', 'Coinbase', 'Kraken', 'unknown wallet']
+        exchanges = ['Exchange', 'Coinbase', 'Kraken', 'unknown wallet']
         cryptos = ['BTC', 'ETH', 'USDT', 'USDC']
         
         whale_transactions = []
@@ -155,14 +155,14 @@ class OnChainDataAnalyzer:
     
     async def get_funding_rates(self) -> List[Dict]:
         """
-        펀딩 레이트 조회 (Binance Futures)
+        펀딩 레이트 조회 (Exchange Futures)
         
         Returns:
             List of funding rates for major pairs
         """
         try:
             async with aiohttp.ClientSession() as session:
-                url = f"{self.binance_base}/premiumIndex"
+                url = f"{self.public_api_base}/premiumIndex"
                 
                 async with session.get(url) as response:
                     if response.status == 200:
@@ -222,7 +222,7 @@ class OnChainDataAnalyzer:
         """
         try:
             async with aiohttp.ClientSession() as session:
-                url = f"{self.binance_base}/openInterest"
+                url = f"{self.public_api_base}/openInterest"
                 params = {'symbol': symbol}
                 
                 async with session.get(url, params=params) as response:
@@ -254,7 +254,7 @@ class OnChainDataAnalyzer:
         """
         try:
             async with aiohttp.ClientSession() as session:
-                url = f"{self.binance_base}/globalLongShortAccountRatio"
+                url = f"{self.public_api_base}/globalLongShortAccountRatio"
                 params = {
                     'symbol': symbol,
                     'period': '5m',

@@ -185,7 +185,7 @@ app.add_middleware(
 async def health_check():
     return {
         "status": "healthy",
-        "binance": exchange_client is not None
+        "exchange": exchange_client is not None
     }
 
 

@@ -51,7 +51,7 @@ async def get_kimchi_premium(symbol: str = "BTC"):
     
     Returns:
         {
-            'binance_price': float,
+            'exchange_price': float,
             'upbit_price_usd': float,
             'premium_pct': float,
             'alert': bool
@@ -92,7 +92,7 @@ async def get_volume_spike(symbol: str = "BTCUSDT"):
     거래량 급증 감지
     
     Args:
-        symbol: Binance 심볼 (예: BTCUSDT, ETHUSDT)
+        symbol: Exchange 심볼 (예: BTCUSDT, ETHUSDT)
     
     Returns:
         {

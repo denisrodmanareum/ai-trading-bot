@@ -138,7 +138,7 @@ async def get_coin_candidates():
         # Force a fresh analysis
         import aiohttp
         
-        futures_symbols = await coin_selector._get_binance_futures_symbols()
+        futures_symbols = await coin_selector._get_exchange_futures_symbols()
         market_data = await coin_selector._get_coingecko_market_data()
         scored_coins = await coin_selector._score_coins(futures_symbols, market_data)
         

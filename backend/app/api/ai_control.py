@@ -259,7 +259,7 @@ async def optimize_hyperparameters(request: OptimizationRequest, background_task
         }
         limit = int(days * candles_per_day.get(request.interval, 24))
         
-        # Binance API single request limit is usually 1000. 
+        # Exchange API single request limit is usually 1000. 
         # For optimization we need more data. 
         # If we use fetch_training_data logic it handles it (but trainer.py has a bug capping it at 1000).
         # We should use fetch_training_data from trainer.py to be consistent and robust.
@@ -683,7 +683,7 @@ async def trigger_daily_review():
             # Fetch raw trades from exchange
             raw_trades = await exchange_client.get_user_trades(limit=100)
             
-            # Map Binance fields to Analyzer schema
+            # Map Exchange fields to Analyzer schema
             trades = []
             for t in raw_trades:
                 trades.append({

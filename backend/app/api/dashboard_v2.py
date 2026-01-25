@@ -147,7 +147,7 @@ async def get_exchange_netflow(symbol: str):
 
 @router.get("/v2/onchain/funding")
 async def get_funding_rates():
-    """펀딩 레이트 (Binance Futures)"""
+    """펀딩 레이트 (Exchange Futures)"""
     try:
         funding = await onchain_data_analyzer.get_funding_rates()
         return {"status": "success", "funding_rates": funding}
