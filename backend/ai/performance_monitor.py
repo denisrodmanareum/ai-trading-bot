@@ -17,8 +17,9 @@ class PerformanceMonitor:
     - 재학습 트리거
     """
     
-    def __init__(self, binance_client, auto_trading_service=None):
-        self.binance_client = binance_client
+    def __init__(self, exchange_client, auto_trading_service=None):
+        self.exchange_client = exchange_client
+        self.binance_client = exchange_client
         self.auto_trading_service = auto_trading_service
         
         # 베이스라인 (목표 성과)

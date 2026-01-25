@@ -13,9 +13,9 @@ router = APIRouter()
 async def get_trading_symbols():
     """Get list of available trading symbols"""
     try:
-        from app.main import binance_client
+        from app.main import exchange_client
         
-        if binance_client is None:
+        if exchange_client is None:
             # Return default symbols if binance not initialized
             return {
                 "symbols": [
@@ -27,7 +27,7 @@ async def get_trading_symbols():
             }
         
         # Get exchange info from Binance
-        exchange_info = await binance_client.get_exchange_info()
+        exchange_info = await exchange_client.get_exchange_info()
         
         # Filter USDT perpetual contracts
         symbols = [
@@ -72,21 +72,21 @@ async def place_order(order: OrderRequest):
     try:
         import app.main as main
         
-        if main.binance_client is None:
+        if main.exchange_client is None:
             raise HTTPException(status_code=503, detail="Binance not connected")
         
         if order.order_type.upper() == "LIMIT":
             if not order.price or order.price <= 0:
                 raise HTTPException(status_code=400, detail="Price required for limit order")
                 
-            result = await main.binance_client.place_limit_order(
+            result = await main.exchange_client.place_limit_order(
                 symbol=order.symbol,
                 side=order.side,
                 quantity=order.quantity,
                 price=order.price
             )
         else:
-            result = await main.binance_client.place_market_order(
+            result = await main.exchange_client.place_market_order(
                 symbol=order.symbol,
                 side=order.side,
                 quantity=order.quantity
@@ -104,10 +104,10 @@ async def close_position():
     try:
         import app.main as main
         
-        if main.binance_client is None:
+        if main.exchange_client is None:
             raise HTTPException(status_code=503, detail="Binance not connected")
         
-        positions = await main.binance_client.get_all_positions()
+        positions = await main.exchange_client.get_all_positions()
         
         if not positions:
             return {"message": "No positions to close"}
@@ -119,7 +119,7 @@ async def close_position():
             side = "SELL" if position_amt > 0 else "BUY"
             quantity = abs(position_amt)
             
-            order = await main.binance_client.place_market_order(
+            order = await main.exchange_client.place_market_order(
                 symbol=symbol,
                 side=side,
                 quantity=quantity
@@ -150,7 +150,7 @@ async def change_leverage(request: LeverageRequest):
         if not 1 <= request.leverage <= 125:
              raise HTTPException(status_code=400, detail="Leverage must be between 1 and 125")
              
-        resp = await main.binance_client.change_leverage(
+        resp = await main.exchange_client.change_leverage(
             symbol=request.symbol,
             leverage=request.leverage
         )
@@ -167,10 +167,10 @@ async def get_price(symbol: str):
     try:
         import app.main as main
         
-        if main.binance_client is None:
+        if main.exchange_client is None:
             raise HTTPException(status_code=503, detail="Binance not connected")
         
-        price = await main.binance_client.get_current_price(symbol)
+        price = await main.exchange_client.get_current_price(symbol)
         return {"symbol": symbol, "price": price}
         
     except Exception as e:
@@ -184,10 +184,10 @@ async def get_order_book(symbol: str):
     try:
         import app.main as main
         
-        if main.binance_client is None:
+        if main.exchange_client is None:
             raise HTTPException(status_code=503, detail="Binance not connected")
         
-        depth = await main.binance_client.get_order_book(symbol)
+        depth = await main.exchange_client.get_order_book(symbol)
         return depth
         
     except Exception as e:
@@ -201,10 +201,10 @@ async def get_balance():
     try:
         import app.main as main
         
-        if main.binance_client is None:
+        if main.exchange_client is None:
             raise HTTPException(status_code=503, detail="Binance not connected")
         
-        account = await main.binance_client.get_account_info()
+        account = await main.exchange_client.get_account_info()
         return account
         
     except Exception as e:
@@ -381,11 +381,11 @@ async def sync_data():
     """Force sync data from Binance (clears ghost records)"""
     try:
         import app.main as main
-        if main.binance_client is None:
+        if main.exchange_client is None:
              raise HTTPException(status_code=503, detail="Binance not connected")
              
         # Fetch real trades from Binance (includes Realized PnL & Commission)
-        user_trades = await main.binance_client.get_user_trades("BTCUSDT", limit=50)
+        user_trades = await main.exchange_client.get_user_trades("BTCUSDT", limit=50)
         
         from app.database import SessionLocal
         from app.models import Trade
@@ -491,10 +491,10 @@ async def get_open_orders(symbol: str = "BTCUSDT"):
     """Get open orders for symbol"""
     try:
         import app.main as main
-        if main.binance_client is None:
+        if main.exchange_client is None:
              raise HTTPException(status_code=503, detail="Binance not connected")
              
-        orders = await main.binance_client.get_open_orders(symbol)
+        orders = await main.exchange_client.get_open_orders(symbol)
         return orders
     except Exception as e:
         logger.error(f"Failed to get orders: {e}")
@@ -505,10 +505,10 @@ async def get_active_positions():
     """Get all active positions"""
     try:
         import app.main as main
-        if main.binance_client is None:
+        if main.exchange_client is None:
              raise HTTPException(status_code=503, detail="Binance not connected")
              
-        positions = await main.binance_client.get_all_positions()
+        positions = await main.exchange_client.get_all_positions()
         return positions
     except Exception as e:
         logger.error(f"Failed to get positions: {e}")
@@ -519,10 +519,10 @@ async def cancel_order(symbol: str, order_id: int):
     """Cancel specific order"""
     try:
         import app.main as main
-        if main.binance_client is None:
+        if main.exchange_client is None:
              raise HTTPException(status_code=503, detail="Binance not connected")
              
-        result = await main.binance_client.cancel_order(symbol, order_id)
+        result = await main.exchange_client.cancel_order(symbol, order_id)
         return result
     except Exception as e:
         logger.error(f"Failed to cancel order: {e}")
@@ -533,15 +533,15 @@ async def cancel_all_orders(symbol: str = "BTCUSDT"):
     """Cancel all orders for symbol"""
     try:
         import app.main as main
-        if main.binance_client is None:
+        if main.exchange_client is None:
              raise HTTPException(status_code=503, detail="Binance not connected")
         
         # Binance API usually has cancelAll, but we can loop if client doesn't support it directly yet.
         # Our simplified client doesn't have cancel_all, so we fetch and loop.
-        orders = await main.binance_client.get_open_orders(symbol)
+        orders = await main.exchange_client.get_open_orders(symbol)
         results = []
         for o in orders:
-            res = await main.binance_client.cancel_order(symbol, o['orderId'])
+            res = await main.exchange_client.cancel_order(symbol, o['orderId'])
             results.append(res)
             
         return {"message": f"Cancelled {len(results)} orders", "details": results}
@@ -554,10 +554,10 @@ async def close_specific_position(symbol: str):
     """Close position for specific symbol"""
     try:
         import app.main as main
-        if main.binance_client is None:
+        if main.exchange_client is None:
              raise HTTPException(status_code=503, detail="Binance not connected")
              
-        position = await main.binance_client.get_position(symbol)
+        position = await main.exchange_client.get_position(symbol)
         amt = position['position_amt']
         
         if amt == 0:
@@ -566,7 +566,7 @@ async def close_specific_position(symbol: str):
         side = "SELL" if amt > 0 else "BUY"
         quantity = abs(amt)
         
-        order = await main.binance_client.place_market_order(symbol, side, quantity, reduce_only=True)
+        order = await main.exchange_client.place_market_order(symbol, side, quantity, reduce_only=True)
         return {"message": f"Closed {symbol} position", "order": order}
         
     except Exception as e:
@@ -580,11 +580,11 @@ async def get_recent_trades(symbol: str = "BTCUSDT", limit: int = 30):
     try:
         import app.main as main
         
-        if main.binance_client is None:
+        if main.exchange_client is None:
             raise HTTPException(status_code=503, detail="Binance not connected")
         
         # Fetch recent trades from Binance
-        trades = await main.binance_client.client.futures_recent_trades(symbol=symbol, limit=limit)
+        trades = await main.exchange_client.client.futures_recent_trades(symbol=symbol, limit=limit)
         
         # Format for frontend
         formatted_trades = [{
@@ -607,13 +607,13 @@ async def get_ticker_info(symbol: str):
     """Get comprehensive ticker info for header"""
     try:
         import app.main as main
-        if main.binance_client is None:
+        if main.exchange_client is None:
             raise HTTPException(status_code=503, detail="Binance not connected")
         
         # Parallel fetch for speed
         mark_price_info, ticker_24h_info = await asyncio.gather(
-            main.binance_client.client.futures_mark_price(symbol=symbol),
-            main.binance_client.client.futures_ticker(symbol=symbol)
+            main.exchange_client.client.futures_mark_price(symbol=symbol),
+            main.exchange_client.client.futures_ticker(symbol=symbol)
         )
         
         return {

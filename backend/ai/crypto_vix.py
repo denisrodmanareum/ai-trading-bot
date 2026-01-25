@@ -15,8 +15,9 @@ class CryptoVIX:
     - 리스크 파라미터 자동 조정
     """
     
-    def __init__(self, binance_client):
-        self.binance_client = binance_client
+    def __init__(self, exchange_client):
+        self.exchange_client = exchange_client
+        self.binance_client = exchange_client
         self.current_vix = 0.0
         self.vix_history = []
     
@@ -30,7 +31,7 @@ class CryptoVIX:
         """
         try:
             # BTC 1시간 차트 조회
-            df = await self.binance_client.get_klines('BTCUSDT', '1h', 100)
+            df = await self.exchange_client.get_klines('BTCUSDT', '1h', 100)
             
             if df is None or len(df) < 20:
                 return self.current_vix  # 이전 값 유지

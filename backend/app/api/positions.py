@@ -13,10 +13,10 @@ async def get_positions():
     try:
         import app.main as main
         
-        if main.binance_client is None:
+        if main.exchange_client is None:
             raise HTTPException(status_code=503, detail="Binance not connected")
         
-        positions = await main.binance_client.get_all_positions()
+        positions = await main.exchange_client.get_all_positions()
         return {"positions": positions}
         
     except Exception as e:

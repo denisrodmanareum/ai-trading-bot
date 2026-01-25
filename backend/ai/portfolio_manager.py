@@ -17,8 +17,9 @@ class PortfolioManager:
     - 포트폴리오 리밸런싱
     """
     
-    def __init__(self, binance_client):
-        self.binance_client = binance_client
+    def __init__(self, exchange_client):
+        self.exchange_client = exchange_client
+        self.binance_client = exchange_client # Fallback
         self.correlation_cache = {}  # symbol_pair -> correlation
         self.last_update = None
         self.cache_duration = timedelta(hours=1)  # 1시간마다 갱신
@@ -45,7 +46,7 @@ class PortfolioManager:
             price_data = {}
             
             for symbol in symbols:
-                df = await self.binance_client.get_klines(symbol, interval, limit)
+                df = await self.exchange_client.get_klines(symbol, interval, limit)
                 if df is not None and len(df) > 0:
                     # 수익률 계산 (로그 수익률)
                     returns = np.log(df['close'] / df['close'].shift(1))

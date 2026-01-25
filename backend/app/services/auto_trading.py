@@ -218,19 +218,15 @@ class CircuitBreaker:
             
         return False
 
-class AutoTradingService:
-    """
-    Automated Trading Service
-    Connects real-time price stream -> AI Agent -> Order Execution
-    """
-    
-    # Helper to get the correct exchange client
+# Helper to get the correct exchange client
 async def get_exchange_client():
     from trading.exchange_factory import ExchangeFactory
     return await ExchangeFactory.get_client()
 
 # Alias for backward compatibility
 get_binance_client = get_exchange_client
+
+class AutoTradingService:
     
     def __init__(self, exchange_client: BaseExchangeClient, ws_manager: WebSocketManager = None):
         self.binance_client = exchange_client # Keep variable name for minimal diff if preferred, or rename to exchange_client
@@ -279,21 +275,21 @@ get_binance_client = get_exchange_client
         self.regime_detector = MarketRegimeDetector()
         self.position_sizer = PositionSizer()
         self.sl_tp_ai = StopLossTakeProfitAI()
-        self.mtf_analyzer = MultiTimeframeAnalyzer(binance_client)
+        self.mtf_analyzer = MultiTimeframeAnalyzer(exchange_client)
         self.smc_analyzer = SmartMoneyConceptAnalyzer()
         
         # 🆕 Phase 1: Order Optimization
-        self.slippage_manager = SlippageManager(self.binance_client)
+        self.slippage_manager = SlippageManager(self.exchange_client)
         self.partial_exit_manager = PartialExitManager()
         
         # 🆕 Phase 2: Risk Optimization
-        self.portfolio_manager = PortfolioManager(self.binance_client)
-        self.crypto_vix = CryptoVIX(self.binance_client)
-        self.performance_monitor = PerformanceMonitor(self.binance_client, self)
+        self.portfolio_manager = PortfolioManager(self.exchange_client)
+        self.crypto_vix = CryptoVIX(self.exchange_client)
+        self.performance_monitor = PerformanceMonitor(self.exchange_client, self)
         
         # 🆕 Phase 3: AI Enhancement
         self.hybrid_ai = HybridAI()
-        self.backtest_engine = BacktestEngine(self.binance_client)
+        self.backtest_engine = BacktestEngine(self.exchange_client)
         self.parameter_optimizer = ParameterOptimizer(self.backtest_engine)
         
         # Shadow Mode (A/B Testing)

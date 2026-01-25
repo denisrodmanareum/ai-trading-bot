@@ -17,8 +17,9 @@ class BacktestEngine:
     - 파라미터 최적화 지원
     """
     
-    def __init__(self, binance_client):
-        self.binance_client = binance_client
+    def __init__(self, exchange_client):
+        self.exchange_client = exchange_client
+        self.binance_client = exchange_client
     
     async def run_backtest(
         self,
@@ -75,7 +76,7 @@ class BacktestEngine:
         try:
             # 바이낸스에서 데이터 조회 (간단 버전)
             # 실제로는 대량 데이터 로드 로직 필요
-            df = await self.binance_client.get_klines(symbol, interval, 1000)
+            df = await self.exchange_client.get_klines(symbol, interval, 1000)
             
             if df is not None:
                 from ai.features import add_technical_indicators

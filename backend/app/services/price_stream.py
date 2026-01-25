@@ -198,18 +198,18 @@ class PriceStreamService:
                     
                     # Fetch latest 1m kline manually
                     try:
-                        klines = await self.binance_client.client.futures_klines(symbol=symbol, interval='1m', limit=2)
-                        if klines:
-                            k = klines[-1]
+                        df = await self.exchange_client.get_klines(symbol=symbol, interval='1m', limit=2)
+                        if not df.empty:
+                            k = df.iloc[-1]
                             data = {
                                 "type": "kline",
                                 "symbol": symbol,
-                                "timestamp": k[0],
-                                "open": float(k[1]),
-                                "high": float(k[2]),
-                                "low": float(k[3]),
-                                "close": float(k[4]),
-                                "volume": float(k[5]),
+                                "timestamp": int(k['timestamp'].timestamp() * 1000),
+                                "open": float(k['open']),
+                                "high": float(k['high']),
+                                "low": float(k['low']),
+                                "close": float(k['close']),
+                                "volume": float(k['volume']),
                                 "is_closed": True
                             }
                             

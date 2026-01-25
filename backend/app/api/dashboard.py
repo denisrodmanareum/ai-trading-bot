@@ -14,20 +14,20 @@ async def get_dashboard_overview() -> Dict:
     try:
         import app.main as main
         
-        if main.binance_client is None:
+        if main.exchange_client is None:
             raise HTTPException(status_code=503, detail="Binance not connected")
         
         # 1. Basic Info
-        account = await main.binance_client.get_account_info()
-        positions = await main.binance_client.get_all_positions()
+        account = await main.exchange_client.get_account_info()
+        positions = await main.exchange_client.get_all_positions()
         
         # Prices
-        btc_price = await main.binance_client.get_current_price("BTCUSDT")
-        eth_price = await main.binance_client.get_current_price("ETHUSDT")
-        sol_price = await main.binance_client.get_current_price("SOLUSDT")
+        btc_price = await main.exchange_client.get_current_price("BTCUSDT")
+        eth_price = await main.exchange_client.get_current_price("ETHUSDT")
+        sol_price = await main.exchange_client.get_current_price("SOLUSDT")
         
         total_unrealized_pnl = sum(pos['unrealized_pnl'] for pos in positions)
-        funding_rate = await main.binance_client.get_funding_rate("BTCUSDT")
+        funding_rate = await main.exchange_client.get_funding_rate("BTCUSDT")
         
         # 2. Market Metrics (Kimchi Premium)
         kimp = 0.0
@@ -66,8 +66,8 @@ async def get_dashboard_overview() -> Dict:
         mark_price_data = {}
         ticker_24h = {}
         try:
-            mark_price_data = await main.binance_client.client.futures_mark_price(symbol="BTCUSDT")
-            ticker_24h = await main.binance_client.client.futures_ticker(symbol="BTCUSDT")
+            mark_price_data = await main.exchange_client.client.futures_mark_price(symbol="BTCUSDT")
+            ticker_24h = await main.exchange_client.client.futures_ticker(symbol="BTCUSDT")
         except Exception as e:
             logger.error(f"Failed to get mark/ticker data: {e}")
 
@@ -107,10 +107,10 @@ async def get_chart_data(symbol: str, interval: str = "1m", limit: int = 50):
     try:
         import app.main as main
         
-        if main.binance_client is None:
+        if main.exchange_client is None:
             raise HTTPException(status_code=503, detail="Binance not connected")
         
-        klines = await main.binance_client.get_raw_klines(
+        klines = await main.exchange_client.get_raw_klines(
             symbol=symbol,
             interval=interval,
             limit=limit
@@ -173,10 +173,10 @@ async def get_dashboard_recent_trades(symbol: str = "BTCUSDT", limit: int = 30):
     """Fallback: Get recent trades via dashboard router"""
     try:
         import app.main as main
-        if main.binance_client is None:
+        if main.exchange_client is None:
             raise HTTPException(status_code=503, detail="Binance not connected")
             
-        trades = await main.binance_client.client.futures_recent_trades(symbol=symbol, limit=limit)
+        trades = await main.exchange_client.client.futures_recent_trades(symbol=symbol, limit=limit)
         return [{
             "id": t['id'],
             "price": t['price'],

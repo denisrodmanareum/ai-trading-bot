@@ -16,6 +16,9 @@ from pathlib import Path
 
 from trading.exchange_factory import ExchangeFactory
 from app.core.config import settings
+from app.services.websocket_manager import WebSocketManager
+from app.services.price_stream import PriceStreamService
+from app.services.auto_trading import AutoTradingService
 
 # Global client
 exchange_client = None
@@ -28,7 +31,7 @@ reporter_service = None
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan"""
-    global binance_client, price_service, auto_trading_service, reporter_service
+    global exchange_client, price_service, auto_trading_service, reporter_service
     
     # Startup
     logger.info("Starting AI Trading Bot...")
@@ -72,7 +75,7 @@ async def lifespan(app: FastAPI):
                        pass
 
                 # 2. Get Account Info
-                account = await binance_client.get_account_info()
+                account = await exchange_client.get_account_info()
                 balance = account.get('balance', 0.0)
                 unrealized_pnl = account.get('unrealized_pnl', 0.0)
                 pnl_percent = 0.0
@@ -80,7 +83,7 @@ async def lifespan(app: FastAPI):
                     pnl_percent = (unrealized_pnl / balance) * 100
 
                 # 3. Get Positions
-                positions = await binance_client.get_all_positions()
+                positions = await exchange_client.get_all_positions()
                 
                 # 4. Get Public IP (Best effort)
                 import socket
@@ -145,8 +148,8 @@ async def lifespan(app: FastAPI):
         await ws_manager.disconnect_all()
     
     # Close Binance client
-    if binance_client:
-        await binance_client.close()
+    if exchange_client:
+        await exchange_client.close()
     
     logger.info("âœ… Shutdown complete")
 
@@ -181,7 +184,7 @@ app.add_middleware(
 async def health_check():
     return {
         "status": "healthy",
-        "binance": binance_client is not None
+        "binance": exchange_client is not None
     }
 
 
@@ -204,10 +207,10 @@ app.include_router(webhook.router, prefix="/api/webhook", tags=["Webhook"])  # ð
 
 @app.get("/api/direct/recent-trades")
 async def get_recent_trades_direct(symbol: str = "BTCUSDT", limit: int = 30):
-    if binance_client is None:
+    if exchange_client is None:
         return []
     try:
-        trades = await binance_client.client.futures_recent_trades(symbol=symbol, limit=limit)
+        trades = await exchange_client.client.futures_recent_trades(symbol=symbol, limit=limit)
         return [{
             "id": t['id'],
             "price": t['price'],
