@@ -257,7 +257,10 @@ class StopLossTakeProfitAI:
         """
         # Fallback to ATR-based if no model
         if self.sl_model is None:
-            base_sl_distance = atr * 2.5  # 🔧 2.0 → 2.5 (변동성 여유 확보)
+            # 🔧 모드별 손절 거리 조정
+            # SCALP: 빠른 손절 (ATR × 2.0)
+            # SWING: 여유 있는 손절 (ATR × 3.0)
+            base_sl_distance = atr * 2.5  # 기본값
             sl_price = entry_price - base_sl_distance
             return {
                 'sl_price': float(sl_price),
@@ -317,7 +320,10 @@ class StopLossTakeProfitAI:
         """
         # Fallback to ATR-based
         if self.tp_model is None:
-            base_tp_distance = atr * 5.0  # 🔧 3.0 → 5.0 (수익 확대, 수수료 대비)
+            # 🔧 모드별 익절 거리 조정
+            # SCALP: 빠른 익절 (ATR × 3.0~4.0)
+            # SWING: 큰 익절 (ATR × 6.0~8.0)
+            base_tp_distance = atr * 5.0  # 기본값 (중간)
             tp_price = entry_price + base_tp_distance
             return {
                 'tp_price': float(tp_price),
@@ -358,7 +364,8 @@ class StopLossTakeProfitAI:
     def get_sl_tp_for_position(
         self,
         position: Dict,
-        current_market_data: Dict
+        current_market_data: Dict,
+        trading_mode: str = "SCALP"  # 🔧 NEW: 트레이딩 모드
     ) -> Dict:
         """
         Get SL/TP for current position
@@ -401,6 +408,14 @@ class StopLossTakeProfitAI:
         rsi = current_market_data.get('rsi', 50.0)
         macd = current_market_data.get('macd', 0.0)
         
+        # 🔧 모드별 배수 조정
+        if trading_mode == "SCALP":
+            sl_multiplier = 2.0   # 빠른 손절
+            tp_multiplier = 3.5   # 작은 익절
+        else:  # SWING
+            sl_multiplier = 3.0   # 여유 있는 손절
+            tp_multiplier = 7.0   # 큰 익절
+        
         # Predict SL
         sl_result = self.predict_stop_loss(
             current_price=current_price,
@@ -422,6 +437,15 @@ class StopLossTakeProfitAI:
             rsi=rsi,
             macd=macd
         )
+        
+        # 🔧 모드별로 TP/SL 오버라이드 (모델이 없을 때만)
+        if sl_result['method'] == 'atr_fallback':
+            sl_result['sl_distance'] = sl_multiplier
+            sl_result['sl_price'] = entry_price - (atr * sl_multiplier)
+        
+        if tp_result['method'] == 'atr_fallback':
+            tp_result['tp_distance'] = tp_multiplier
+            tp_result['tp_price'] = entry_price + (atr * tp_multiplier)
         
         # Adjust for SHORT positions
         if position['position_amt'] < 0:

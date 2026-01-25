@@ -53,16 +53,33 @@ class TrailingTakeProfitConfig:
     def __init__(
         self, 
         enabled=True,
-        activation_pct=1.0,  # 🔧 1.5% → 1.0% (빠른 트레일링 활성화로 익절 기회 확대)
-        distance_pct=1.2,    # 최고점에서 1.2% 하락 시 익절
-        min_hold_minutes=15,  # 🔧 3분 → 15분 (잦은 FLIP 방지, 수수료 절감)
-        flip_min_signal_score=5  # 🔧 4점 → 5점 (매우 강한 신호만 FLIP 허용)
+        activation_pct=1.0,  # 트레일링 활성화 수익률
+        distance_pct=1.2,    # 최고점에서 하락 허용치
+        min_hold_minutes=15,  # 최소 보유시간 (기본값, 모드별로 조정됨)
+        flip_min_signal_score=5  # FLIP 최소 신호 강도
     ):
         self.enabled = enabled
         self.activation_pct = activation_pct
         self.distance_pct = distance_pct
         self.min_hold_minutes = min_hold_minutes
         self.flip_min_signal_score = flip_min_signal_score
+    
+    def get_config_for_mode(self, mode: str) -> dict:
+        """🔧 모드별 설정 반환"""
+        if mode == "SCALP":
+            return {
+                'activation_pct': 0.8,  # 0.8% 수익에 빠른 활성화
+                'distance_pct': 0.8,    # 0.8% 하락 시 익절 (빠른 청산)
+                'min_hold_minutes': 5,  # 5분 최소 보유
+                'flip_min_signal_score': 4  # 스캘핑은 더 유연
+            }
+        else:  # SWING
+            return {
+                'activation_pct': 2.0,  # 2% 수익 후 활성화
+                'distance_pct': 2.0,    # 2% 하락 허용 (트렌드 추종)
+                'min_hold_minutes': 60,  # 60분 최소 보유
+                'flip_min_signal_score': 5  # 강한 신호만 FLIP
+            }
 
 class StrategyConfig:
     """Strategy Configuration (Manual Overrides)"""
@@ -1556,6 +1573,7 @@ class AutoTradingService:
         sl_price: float | None = None
         try:
             pos_amt = quantity if side == "LONG" else -quantity
+            # 🔧 모드 정보 전달
             sltp = self.sl_tp_ai.get_sl_tp_for_position(
                 position={"entry_price": entry_price, "position_amt": pos_amt, "unrealized_pnl": 0.0},
                 current_market_data={
@@ -1564,6 +1582,7 @@ class AutoTradingService:
                     "rsi": float(market_state.get("rsi", 50.0)),
                     "macd": float(market_state.get("macd", 0.0)),
                 },
+                trading_mode=self.strategy_config.mode  # 🔧 SCALP or SWING
             )
             sl_price = float(sltp.get("sl_price")) if sltp.get("sl_price") is not None else None
             tp_price = float(sltp.get("tp_price")) if sltp.get("tp_price") is not None else None
@@ -1619,17 +1638,20 @@ class AutoTradingService:
         if not entry_ts:
             return True
         
+        # 🔧 모드별 최소 보유 시간
+        mode_config = self.trailing_config.get_config_for_mode(self.strategy_config.mode)
+        min_hold = mode_config['min_hold_minutes']
+        
         # 최소 보유 시간 체크
         hold_minutes = (time.time() - entry_ts) / 60.0
-        min_hold = self.trailing_config.min_hold_minutes
         
         # 조건 1: 최소 보유 시간 미달 (빠른 손절)
         if hold_minutes < min_hold:
             logger.info(f"✅ FLIP 허용 (빠른 손절): {symbol} 보유시간 {hold_minutes:.1f}분 < {min_hold}분")
             return True
         
-        # 조건 2: 강력한 신호 (4점 이상)
-        min_signal = self.trailing_config.flip_min_signal_score
+        # 조건 2: 강력한 신호 (모드별)
+        min_signal = mode_config['flip_min_signal_score']
         if signal_strength >= min_signal:
             logger.info(f"✅ FLIP 허용 (강력한 신호): {symbol} 신호 강도 {signal_strength} >= {min_signal}")
             return True
@@ -1676,9 +1698,12 @@ class AutoTradingService:
         if not entry_price or not entry_ts:
             return
         
+        # 🔧 모드별 트레일링 설정
+        mode_config = self.trailing_config.get_config_for_mode(self.strategy_config.mode)
+        
         # 최소 보유 시간 체크
         hold_minutes = (time.time() - entry_ts) / 60.0
-        if hold_minutes < self.trailing_config.min_hold_minutes:
+        if hold_minutes < mode_config['min_hold_minutes']:
             return
         
         leverage = bracket.get("leverage", 1)
@@ -1700,10 +1725,10 @@ class AutoTradingService:
                 bracket["trailing_active"] = True
                 logger.info(f"✨ {symbol} 트레일링 익절 활성화! 수익률: {profit_pct:.2f}% (최소: {self.trailing_config.activation_pct}%)")
             
-            # 트레일링 활성화 시 익절가 동적 조정
+            # 트레일링 활성화 시 익절가 동적 조정 (모드별)
             if bracket.get("trailing_active"):
                 # 최고가에서 distance_pct% 하락한 가격으로 익절가 설정
-                new_tp = high_water_mark * (1 - self.trailing_config.distance_pct / 100.0)
+                new_tp = high_water_mark * (1 - mode_config['distance_pct'] / 100.0)
                 current_tp = bracket.get("tp")
                 
                 # 익절가가 진입가보다 높고, 기존 익절가보다 높으면 업데이트
@@ -1742,15 +1767,15 @@ class AutoTradingService:
             # 수익률 계산 (레버리지 고려)
             profit_pct = ((entry_price - current_price) / entry_price) * 100.0 * leverage
             
-            # 트레일링 활성화 조건 체크
-            if not bracket.get("trailing_active") and profit_pct >= self.trailing_config.activation_pct:
+            # 트레일링 활성화 조건 체크 (모드별)
+            if not bracket.get("trailing_active") and profit_pct >= mode_config['activation_pct']:
                 bracket["trailing_active"] = True
-                logger.info(f"✨ {symbol} 트레일링 익절 활성화! 수익률: {profit_pct:.2f}% (최소: {self.trailing_config.activation_pct}%)")
+                logger.info(f"✨ {symbol} 트레일링 익절 활성화! 수익률: {profit_pct:.2f}% (최소: {mode_config['activation_pct']}%)")
             
-            # 트레일링 활성화 시 익절가 동적 조정
+            # 트레일링 활성화 시 익절가 동적 조정 (모드별)
             if bracket.get("trailing_active"):
                 # 최저가에서 distance_pct% 상승한 가격으로 익절가 설정
-                new_tp = low_water_mark * (1 + self.trailing_config.distance_pct / 100.0)
+                new_tp = low_water_mark * (1 + mode_config['distance_pct'] / 100.0)
                 current_tp = bracket.get("tp")
                 
                 # 익절가가 진입가보다 낮고, 기존 익절가보다 낮으면 업데이트
