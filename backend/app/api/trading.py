@@ -595,21 +595,7 @@ async def get_recent_trades(symbol: str = "BTCUSDT", limit: int = 30):
         logger.error(f"Failed to get recent trades: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# The following get_user_trades function is assumed to be a method of the ExchangeClient class
-# and is not directly added to this router file. The instruction implies its definition
-# is updated elsewhere, and sync_data (the initial block) now uses its standardized output.
-# For clarity, if it were to be a router endpoint, it would look like this:
-# @router.get("/user_trades")
-# async def get_user_trades_endpoint(symbol: str = "BTCUSDT", limit: int = 50) -> List[Dict]:
-#     """Get user trade history with PnL (Standardized)"""
-#     try:
-#         import app.main as main
-#         if main.exchange_client is None:
-#             raise HTTPException(status_code=503, detail="Exchange not connected")
-#         return await main.exchange_client.get_user_trades(symbol=symbol, limit=limit)
-#     except Exception as e:
-#         logger.error(f"Failed to get user trades: {e}")
-#         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 @router.get("/ticker/{symbol}")
