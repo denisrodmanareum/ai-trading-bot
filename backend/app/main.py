@@ -26,6 +26,7 @@ ws_manager = WebSocketManager()
 price_service = None
 auto_trading_service = None
 reporter_service = None
+# Reference to auto_trading_service is maintained here for global access by API routers
 
 
 @asynccontextmanager
