@@ -32,15 +32,21 @@ class RiskConfig:
         max_margin_level=0.8, 
         kill_switch=False, 
         position_mode="ADAPTIVE",  # 🔧 "FIXED", "RATIO", "ADAPTIVE"
-        position_ratio=0.03,  # 🔧 0.1 → 0.03 (3% per coin for RATIO mode)
-        max_total_exposure=0.20  # 🔧 NEW: 최대 총 노출 20%
+        position_ratio=0.03,  # Per coin ratio (기본 3%)
+        max_total_exposure=0.26,  # 🔧 총 노출 26% (코어 20% + 알트 6%)
+        core_coin_ratio=0.05,  # 🔧 NEW: 코어코인 비율 5%
+        alt_coin_ratio=0.02   # 🔧 NEW: 알트코인 비율 2%
     ):
         self.daily_loss_limit = daily_loss_limit # USDT
         self.max_margin_level = max_margin_level # Maintenance Margin / Margin Balance
         self.kill_switch = kill_switch # If True, no new trades allowed
         self.position_mode = position_mode # "FIXED", "RATIO", "ADAPTIVE"
-        self.position_ratio = position_ratio # Per coin ratio (기본 3%)
-        self.max_total_exposure = max_total_exposure # Total exposure limit (기본 20%)
+        self.position_ratio = position_ratio # Per coin ratio (RATIO mode용)
+        self.max_total_exposure = max_total_exposure # Total exposure limit
+        self.core_coin_ratio = core_coin_ratio # 코어코인 배분 비율
+        self.alt_coin_ratio = alt_coin_ratio # 알트코인 배분 비율
+        # 코어코인 정의 (BTC, ETH, SOL, BNB)
+        self.core_coins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT']
 
 class TrailingTakeProfitConfig:
     """Trailing Take Profit Configuration"""
@@ -344,7 +350,9 @@ class AutoTradingService:
         kill_switch=None, 
         position_mode=None, 
         position_ratio=None,
-        max_total_exposure=None  # 🔧 NEW
+        max_total_exposure=None,
+        core_coin_ratio=None,  # 🔧 NEW
+        alt_coin_ratio=None   # 🔧 NEW
     ):
         """Update risk configuration"""
         if daily_loss_limit is not None:
@@ -362,9 +370,15 @@ class AutoTradingService:
             logger.info(f"📊 Position Mode Changed: {position_mode}")
         if position_ratio is not None:
             self.risk_config.position_ratio = position_ratio
-        if max_total_exposure is not None:  # 🔧 NEW
+        if max_total_exposure is not None:
             self.risk_config.max_total_exposure = max_total_exposure
             logger.info(f"📊 Max Total Exposure Changed: {max_total_exposure*100:.0f}%")
+        if core_coin_ratio is not None:  # 🔧 NEW
+            self.risk_config.core_coin_ratio = core_coin_ratio
+            logger.info(f"📊 Core Coin Ratio Changed: {core_coin_ratio*100:.0f}%")
+        if alt_coin_ratio is not None:  # 🔧 NEW
+            self.risk_config.alt_coin_ratio = alt_coin_ratio
+            logger.info(f"📊 Alt Coin Ratio Changed: {alt_coin_ratio*100:.0f}%")
 
     async def stop(self):
         """Stop auto trading"""
@@ -857,22 +871,25 @@ class AutoTradingService:
             current_balance = 5000.0  # Fallback
         
         if self.risk_config.position_mode == "ADAPTIVE":
-            # 🔧 AI ADAPTIVE MODE: 잔고 × 총노출% ÷ 활성코인수
-            # 예: 5000 USDT × 20% ÷ 5 coins = 200 USDT/coin
+            # 🔧 AI ADAPTIVE MODE: 코어코인과 알트코인 차등 배분
             try:
-                # Get active coin count
-                selected_coins = await coin_selector.get_selected_coins()
-                active_coin_count = max(len(selected_coins), 1)  # 최소 1개
+                # 코어코인 여부 확인
+                is_core = symbol in self.risk_config.core_coins
                 
-                # Calculate per-coin allocation
-                total_exposure = current_balance * self.risk_config.max_total_exposure
-                base_notional = total_exposure / active_coin_count
+                if is_core:
+                    # 코어코인: 높은 비율 (기본 5%)
+                    base_notional = current_balance * self.risk_config.core_coin_ratio
+                    coin_type = "Core"
+                    ratio_pct = self.risk_config.core_coin_ratio * 100
+                else:
+                    # 알트코인: 낮은 비율 (기본 2%)
+                    base_notional = current_balance * self.risk_config.alt_coin_ratio
+                    coin_type = "Alt"
+                    ratio_pct = self.risk_config.alt_coin_ratio * 100
                 
                 logger.info(
-                    f"💰 Adaptive Mode: Balance={current_balance:.0f}, "
-                    f"Max Exposure={self.risk_config.max_total_exposure*100:.0f}%, "
-                    f"Active Coins={active_coin_count} → "
-                    f"Per Coin={base_notional:.0f} USDT ({(base_notional/current_balance)*100:.1f}%)"
+                    f"💰 Adaptive Mode [{coin_type}]: {symbol} = "
+                    f"{current_balance:.0f} × {ratio_pct:.1f}% = {base_notional:.0f} USDT"
                 )
             except Exception as e:
                 logger.warning(f"Adaptive sizing failed: {e}, using fallback")
@@ -1265,10 +1282,12 @@ class AutoTradingService:
             
             if self.risk_config.position_mode == "ADAPTIVE":
                 try:
-                    selected_coins = await coin_selector.get_selected_coins()
-                    active_coin_count = max(len(selected_coins), 1)
-                    total_exposure = current_balance * self.risk_config.max_total_exposure
-                    target_notional = total_exposure / active_coin_count
+                    # 코어코인 여부 확인
+                    is_core = symbol in self.risk_config.core_coins
+                    if is_core:
+                        target_notional = current_balance * self.risk_config.core_coin_ratio
+                    else:
+                        target_notional = current_balance * self.risk_config.alt_coin_ratio
                 except:
                     target_notional = current_balance * 0.03
             elif self.risk_config.position_mode == "RATIO":
