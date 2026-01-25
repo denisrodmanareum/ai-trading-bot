@@ -25,7 +25,10 @@ function TradingPerfect() {
   const [activeExchange, setActiveExchange] = useState('BINANCE');
 
   // AI Control State
-  const [aiRunning, setAiRunning] = useState(false);
+  // 🆕 Fix: localStorage 백업으로 초기화 (서버 상태는 useEffect에서 덮어씀)
+  const [aiRunning, setAiRunning] = useState(
+    localStorage.getItem('ai_trading_status') === 'running'
+  );
   const [aiMode, setAiMode] = useState('SCALP');
   const [aiLeverageMode, setAiLeverageMode] = useState('AUTO');
 
@@ -66,7 +69,10 @@ function TradingPerfect() {
         if (balRes.ok) setBalance(await balRes.json());
         if (aiRes.ok) {
           const data = await aiRes.json();
+          // 🆕 Fix: 서버 상태를 항상 반영
           setAiRunning(data.running || false);
+          // localStorage에도 저장 (백업용)
+          localStorage.setItem('ai_trading_status', data.running ? 'running' : 'stopped');
         }
         if (configRes.ok) {
           const config = await configRes.json();
@@ -210,7 +216,12 @@ function TradingPerfect() {
     const action = aiRunning ? 'stop' : 'start';
     try {
       const res = await fetch(`/api/ai/${action}`, { method: 'POST' });
-      if (res.ok) setAiRunning(!aiRunning);
+      if (res.ok) {
+        const newState = !aiRunning;
+        setAiRunning(newState);
+        // 🆕 Fix: localStorage에 저장
+        localStorage.setItem('ai_trading_status', newState ? 'running' : 'stopped');
+      }
     } catch (e) { console.error(e); }
   };
 

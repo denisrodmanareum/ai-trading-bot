@@ -17,6 +17,11 @@ function TradingPro() {
   const [positions, setPositions] = useState([]);
   const [balance, setBalance] = useState({ available: 0, total: 0 });
   const [prices, setPrices] = useState({}); // 모든 심볼의 가격 저장
+  
+  // 🆕 AI Control State (서버 상태와 동기화)
+  const [aiRunning, setAiRunning] = useState(
+    localStorage.getItem('ai_trading_status') === 'running'
+  );
 
   // Order Form State
   const [orderSide, setOrderSide] = useState('BUY'); // BUY or SELL
@@ -35,10 +40,11 @@ function TradingPro() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [posRes, balRes, dashRes] = await Promise.all([
+        const [posRes, balRes, dashRes, aiRes] = await Promise.all([
           fetch('/api/trading/positions'),
           fetch('/api/trading/balance'),
-          fetch('/api/dashboard/overview')
+          fetch('/api/dashboard/overview'),
+          fetch('/api/ai/status')  // 🆕 AI 상태 조회 추가
         ]);
 
         if (posRes.ok) setPositions(await posRes.json());
@@ -46,6 +52,12 @@ function TradingPro() {
         if (dashRes.ok) {
           const dashData = await dashRes.json();
           setPrices(dashData.prices || {});
+        }
+        // 🆕 AI 상태 동기화
+        if (aiRes.ok) {
+          const data = await aiRes.json();
+          setAiRunning(data.running || false);
+          localStorage.setItem('ai_trading_status', data.running ? 'running' : 'stopped');
         }
       } catch (e) {
         console.error('Failed to fetch data:', e);
