@@ -9,6 +9,7 @@ from loguru import logger
 
 from trading.base_client import BaseExchangeClient
 from app.services.websocket_manager import WebSocketManager
+from app.core.config import settings
 
 
 class PriceStreamService:
