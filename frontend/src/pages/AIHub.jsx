@@ -784,7 +784,7 @@ function AIHub() {
                     )}
                   </select>
                   <span style={{ fontSize: '0.65rem', color: '#666', marginTop: '0.25rem', display: 'block' }}>
-                    💡 하이브리드 모드에서 선택된 코인만 학습 가능
+                    💡 코인 선택 탭에서 모드 변경 가능 (BTC Only / Hybrid)
                   </span>
                 </div>
 
@@ -1377,7 +1377,7 @@ function AIHub() {
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                   <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#fff' }}>
-                    🪙 현재 선택된 코인 (하이브리드 모드)
+                    {coinSelection.config?.mode === 'BTC_ONLY' ? '₿ Bitcoin Only 모드' : '🪙 현재 선택된 코인 (하이브리드 모드)'}
                   </h3>
                   <button
                     onClick={handleRebalance}
@@ -1460,30 +1460,204 @@ function AIHub() {
               </div>
             )}
 
-            {/* Configuration Panel */}
+            {/* 🆕 Trading Mode Selection */}
             <div style={{
               background: '#0a0a0a',
               border: '1px solid #222',
               borderRadius: '4px',
-              padding: '1.5rem'
+              padding: '1.5rem',
+              marginBottom: '1rem'
             }}>
               <h3 style={{ fontSize: '1rem', fontWeight: '800', marginBottom: '1rem', color: '#fff' }}>
-                ⚙️ 선택 설정
+                🎯 트레이딩 모드 선택
               </h3>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-                {/* Core Coins */}
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#666', marginBottom: '0.5rem' }}>
-                    코어 코인 (항상 포함)
-                  </label>
-                  <div style={{ fontSize: '0.8rem', color: '#fff' }}>
-                    {coinSelection.config?.core_coins?.join(', ') || 'BTC, ETH, SOL, BNB'}
+                {/* BTC Only Mode */}
+                <button
+                  onClick={() => updateCoinConfig({ mode: 'BTC_ONLY' })}
+                  style={{
+                    padding: '1.5rem',
+                    background: coinSelection.config?.mode === 'BTC_ONLY' 
+                      ? 'linear-gradient(135deg, #f0b90b, #f8d12f)' 
+                      : '#111',
+                    border: coinSelection.config?.mode === 'BTC_ONLY' 
+                      ? '2px solid #f0b90b' 
+                      : '1px solid #333',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s',
+                    textAlign: 'left'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (coinSelection.config?.mode !== 'BTC_ONLY') {
+                      e.currentTarget.style.borderColor = '#f0b90b';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (coinSelection.config?.mode !== 'BTC_ONLY') {
+                      e.currentTarget.style.borderColor = '#333';
+                    }
+                  }}
+                >
+                  <div style={{ 
+                    fontSize: '2rem', 
+                    marginBottom: '0.5rem',
+                    color: coinSelection.config?.mode === 'BTC_ONLY' ? '#000' : '#f0b90b'
+                  }}>
+                    ₿
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.25rem' }}>
-                    코어 코인은 최대 10배, 나머지는 최대 5배 레버리지
+                  <div style={{ 
+                    fontSize: '1rem', 
+                    fontWeight: '900', 
+                    marginBottom: '0.5rem',
+                    color: coinSelection.config?.mode === 'BTC_ONLY' ? '#000' : '#fff'
+                  }}>
+                    BTC ONLY
                   </div>
+                  <div style={{ 
+                    fontSize: '0.75rem', 
+                    color: coinSelection.config?.mode === 'BTC_ONLY' ? 'rgba(0,0,0,0.7)' : '#888',
+                    lineHeight: '1.6'
+                  }}>
+                    비트코인에만 올인<br/>
+                    단일 코인 집중 전략<br/>
+                    높은 유동성 & 안정성
+                  </div>
+                  {coinSelection.config?.mode === 'BTC_ONLY' && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      padding: '0.5rem',
+                      background: 'rgba(0,0,0,0.2)',
+                      borderRadius: '3px',
+                      fontSize: '0.7rem',
+                      fontWeight: '800',
+                      color: '#000'
+                    }}>
+                      ✅ 현재 활성화
+                    </div>
+                  )}
+                </button>
+
+                {/* Hybrid Mode */}
+                <button
+                  onClick={() => updateCoinConfig({ mode: 'HYBRID' })}
+                  style={{
+                    padding: '1.5rem',
+                    background: coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode
+                      ? 'linear-gradient(135deg, #00b07c, #00d98e)' 
+                      : '#111',
+                    border: coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode
+                      ? '2px solid #00b07c' 
+                      : '1px solid #333',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    transition: 'all 0.3s',
+                    textAlign: 'left'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (coinSelection.config?.mode !== 'HYBRID' && coinSelection.config?.mode) {
+                      e.currentTarget.style.borderColor = '#00b07c';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (coinSelection.config?.mode !== 'HYBRID' && coinSelection.config?.mode) {
+                      e.currentTarget.style.borderColor = '#333';
+                    }
+                  }}
+                >
+                  <div style={{ 
+                    fontSize: '2rem', 
+                    marginBottom: '0.5rem',
+                    color: coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode ? '#000' : '#00b07c'
+                  }}>
+                    🪙
+                  </div>
+                  <div style={{ 
+                    fontSize: '1rem', 
+                    fontWeight: '900', 
+                    marginBottom: '0.5rem',
+                    color: coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode ? '#000' : '#fff'
+                  }}>
+                    HYBRID
+                  </div>
+                  <div style={{ 
+                    fontSize: '0.75rem', 
+                    color: coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode ? 'rgba(0,0,0,0.7)' : '#888',
+                    lineHeight: '1.6'
+                  }}>
+                    코어 코인 + 알트코인<br/>
+                    AI 자동 선택 전략<br/>
+                    분산 투자 & 기회 포착
+                  </div>
+                  {(coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode) && (
+                    <div style={{
+                      marginTop: '0.75rem',
+                      padding: '0.5rem',
+                      background: 'rgba(0,0,0,0.2)',
+                      borderRadius: '3px',
+                      fontSize: '0.7rem',
+                      fontWeight: '800',
+                      color: '#000'
+                    }}>
+                      ✅ 현재 활성화
+                    </div>
+                  )}
+                </button>
+              </div>
+
+              {/* Mode Description */}
+              <div style={{
+                marginTop: '1rem',
+                padding: '1rem',
+                background: coinSelection.config?.mode === 'BTC_ONLY' 
+                  ? 'rgba(240, 185, 11, 0.1)'
+                  : 'rgba(0, 176, 124, 0.1)',
+                border: `1px solid ${coinSelection.config?.mode === 'BTC_ONLY' ? 'rgba(240, 185, 11, 0.3)' : 'rgba(0, 176, 124, 0.3)'}`,
+                borderRadius: '4px'
+              }}>
+                <div style={{ 
+                  fontSize: '0.75rem', 
+                  fontWeight: '800', 
+                  color: coinSelection.config?.mode === 'BTC_ONLY' ? '#f0b90b' : '#00b07c',
+                  marginBottom: '0.5rem'
+                }}>
+                  {coinSelection.config?.mode === 'BTC_ONLY' ? '₿ BTC Only 모드 활성화' : '🪙 하이브리드 모드 활성화'}
                 </div>
+                <div style={{ fontSize: '0.7rem', color: '#bbb', lineHeight: '1.6' }}>
+                  {coinSelection.config?.mode === 'BTC_ONLY' 
+                    ? 'BTCUSDT만 거래하며, 모든 자본을 비트코인에 집중합니다. 가장 높은 유동성과 안정성을 제공하며, 시장 대표 지표를 따릅니다.'
+                    : '코어 코인(BTC, ETH, SOL, BNB)과 AI가 선택한 상위 알트코인을 함께 거래합니다. 안정성과 기회 포착을 동시에 추구합니다.'
+                  }
+                </div>
+              </div>
+            </div>
+
+            {/* Configuration Panel (HYBRID Mode only) */}
+            {(coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode) && (
+              <div style={{
+                background: '#0a0a0a',
+                border: '1px solid #222',
+                borderRadius: '4px',
+                padding: '1.5rem'
+              }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: '800', marginBottom: '1rem', color: '#fff' }}>
+                  ⚙️ 선택 설정 (하이브리드 모드)
+                </h3>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+                  {/* Core Coins */}
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#666', marginBottom: '0.5rem' }}>
+                      코어 코인 (항상 포함)
+                    </label>
+                    <div style={{ fontSize: '0.8rem', color: '#fff' }}>
+                      {coinSelection.config?.core_coins?.join(', ') || 'BTC, ETH, SOL, BNB'}
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.25rem' }}>
+                      코어 코인은 최대 10배, 나머지는 최대 5배 레버리지
+                    </div>
+                  </div>
 
                 {/* Max Altcoins */}
                 <div>
@@ -1520,13 +1694,14 @@ function AIHub() {
                     {coinSelection.config?.max_total || 7} coins
                   </div>
                   <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.25rem' }}>
-                    최대 동시 거래 수
-                  </div>
+                  최대 동시 거래 수
                 </div>
               </div>
             </div>
+              </div>
+            )}
 
-            {/* Top Candidates */}
+            {/* Top Candidates (HYBRID Mode only) */}
             {coinCandidates.length > 0 && (
               <div style={{
                 background: '#0a0a0a',
@@ -1588,8 +1763,9 @@ function AIHub() {
               </div>
             )}
 
-            {/* Selection Criteria Info */}
-            <div style={{
+            {/* Selection Criteria Info (HYBRID Mode only) */}
+            {(coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode) && (
+              <div style={{
               background: '#0a0a0a',
               border: '1px solid #222',
               borderRadius: '4px',
@@ -1638,6 +1814,8 @@ function AIHub() {
                 높은 거래량과 적당한 변동성을 가진 기회를 최적화합니다. 이러한 균형 잡힌 접근 방식은 리스크를 관리하면서 수익을 극대화합니다.
               </div>
             </div>
+              </div>
+            )}
           </div>
         )}
       </div>

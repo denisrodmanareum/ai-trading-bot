@@ -22,6 +22,7 @@ class CoinSelector:
         
         # Default configuration
         self.config = {
+            'mode': 'HYBRID',  # 🆕 BTC_ONLY or HYBRID
             'core_coins': ['BTC', 'ETH', 'SOL', 'BNB'],
             'max_altcoins': 3,
             'max_total': 7,
@@ -51,6 +52,12 @@ class CoinSelector:
         Get currently selected coins
         Returns: ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', ...]
         """
+        # 🆕 BTC Only 모드: 비트코인만 반환
+        if self.config.get('mode') == 'BTC_ONLY':
+            logger.debug("₿ BTC Only Mode: Returning BTCUSDT only")
+            return ['BTCUSDT']
+        
+        # HYBRID 모드: 기존 로직
         # Check if rebalance needed
         if self._should_rebalance():
             await self.rebalance()
@@ -78,7 +85,20 @@ class CoinSelector:
                 'timestamp': '...'
             }
         """
-        logger.info("🔄 Rebalancing coin selection...")
+        # 🆕 BTC Only 모드: 재선별 불필요
+        if self.config.get('mode') == 'BTC_ONLY':
+            logger.info("₿ BTC Only Mode: No rebalancing needed")
+            self.selected_coins = ['BTCUSDT']
+            self.coin_scores = {'BTCUSDT': 100.0}
+            self.last_rebalance = datetime.now()
+            return {
+                'mode': 'BTC_ONLY',
+                'selected_coins': self.selected_coins,
+                'scores': self.coin_scores,
+                'message': 'BTC Only Mode - Bitcoin All-In Strategy'
+            }
+        
+        logger.info("🔄 Rebalancing coin selection... (HYBRID Mode)")
         
         try:
             # Get all available futures symbols from Exchange
@@ -341,6 +361,14 @@ class CoinSelector:
         """Update configuration"""
         self.config.update(new_config)
         logger.info(f"Configuration updated: {new_config}")
+        
+        # 🆕 모드 변경 시 즉시 적용
+        if 'mode' in new_config:
+            mode = new_config['mode']
+            if mode == 'BTC_ONLY':
+                self.selected_coins = ['BTCUSDT']
+                self.coin_scores = {'BTCUSDT': 100.0}
+                logger.info("₿ Switched to BTC Only Mode")
     
     def get_config(self) -> Dict:
         """Get current configuration"""
