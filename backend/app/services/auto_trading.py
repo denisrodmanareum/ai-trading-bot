@@ -38,10 +38,10 @@ class TrailingTakeProfitConfig:
     def __init__(
         self, 
         enabled=True,
-        activation_pct=1.5,  # 1.5% 수익 시 트레일링 활성화
+        activation_pct=1.0,  # 🔧 1.5% → 1.0% (빠른 트레일링 활성화로 익절 기회 확대)
         distance_pct=1.2,    # 최고점에서 1.2% 하락 시 익절
-        min_hold_minutes=3,  # 최소 3분 보유
-        flip_min_signal_score=4  # FLIP 시 최소 신호 점수 (4점 이상)
+        min_hold_minutes=15,  # 🔧 3분 → 15분 (잦은 FLIP 방지, 수수료 절감)
+        flip_min_signal_score=5  # 🔧 4점 → 5점 (매우 강한 신호만 FLIP 허용)
     ):
         self.enabled = enabled
         self.activation_pct = activation_pct

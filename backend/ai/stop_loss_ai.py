@@ -257,11 +257,11 @@ class StopLossTakeProfitAI:
         """
         # Fallback to ATR-based if no model
         if self.sl_model is None:
-            base_sl_distance = atr * 2.0
+            base_sl_distance = atr * 2.5  # 🔧 2.0 → 2.5 (변동성 여유 확보)
             sl_price = entry_price - base_sl_distance
             return {
                 'sl_price': float(sl_price),
-                'sl_distance': 2.0,
+                'sl_distance': 2.5,
                 'method': 'atr_fallback'
             }
         
@@ -317,11 +317,11 @@ class StopLossTakeProfitAI:
         """
         # Fallback to ATR-based
         if self.tp_model is None:
-            base_tp_distance = atr * 3.0
+            base_tp_distance = atr * 5.0  # 🔧 3.0 → 5.0 (수익 확대, 수수료 대비)
             tp_price = entry_price + base_tp_distance
             return {
                 'tp_price': float(tp_price),
-                'tp_distance': 3.0,
+                'tp_distance': 5.0,
                 'method': 'atr_fallback'
             }
         
