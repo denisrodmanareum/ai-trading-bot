@@ -26,12 +26,21 @@ import pandas as pd
 
 class RiskConfig:
     """Risk Management Configuration"""
-    def __init__(self, daily_loss_limit=50.0, max_margin_level=0.8, kill_switch=False, position_mode="FIXED", position_ratio=0.1):
+    def __init__(
+        self, 
+        daily_loss_limit=50.0, 
+        max_margin_level=0.8, 
+        kill_switch=False, 
+        position_mode="ADAPTIVE",  # 🔧 "FIXED", "RATIO", "ADAPTIVE"
+        position_ratio=0.03,  # 🔧 0.1 → 0.03 (3% per coin for RATIO mode)
+        max_total_exposure=0.20  # 🔧 NEW: 최대 총 노출 20%
+    ):
         self.daily_loss_limit = daily_loss_limit # USDT
         self.max_margin_level = max_margin_level # Maintenance Margin / Margin Balance
         self.kill_switch = kill_switch # If True, no new trades allowed
-        self.position_mode = position_mode # "FIXED" or "RATIO"
-        self.position_ratio = position_ratio # 0.1 = 10% of balance
+        self.position_mode = position_mode # "FIXED", "RATIO", "ADAPTIVE"
+        self.position_ratio = position_ratio # Per coin ratio (기본 3%)
+        self.max_total_exposure = max_total_exposure # Total exposure limit (기본 20%)
 
 class TrailingTakeProfitConfig:
     """Trailing Take Profit Configuration"""
@@ -328,7 +337,15 @@ class AutoTradingService:
 
         return True, "OK"
         
-    def update_risk_config(self, daily_loss_limit=None, max_margin_level=None, kill_switch=None, position_mode=None, position_ratio=None):
+    def update_risk_config(
+        self, 
+        daily_loss_limit=None, 
+        max_margin_level=None, 
+        kill_switch=None, 
+        position_mode=None, 
+        position_ratio=None,
+        max_total_exposure=None  # 🔧 NEW
+    ):
         """Update risk configuration"""
         if daily_loss_limit is not None:
             self.risk_config.daily_loss_limit = daily_loss_limit
@@ -342,8 +359,12 @@ class AutoTradingService:
                 logger.info("✅ Kill Switch Deactivated")
         if position_mode is not None:
             self.risk_config.position_mode = position_mode
+            logger.info(f"📊 Position Mode Changed: {position_mode}")
         if position_ratio is not None:
             self.risk_config.position_ratio = position_ratio
+        if max_total_exposure is not None:  # 🔧 NEW
+            self.risk_config.max_total_exposure = max_total_exposure
+            logger.info(f"📊 Max Total Exposure Changed: {max_total_exposure*100:.0f}%")
 
     async def stop(self):
         """Stop auto trading"""
@@ -827,18 +848,45 @@ class AutoTradingService:
             except:
                 return round(qty, 3)
 
-        # Quantity logic - 🔧 ENHANCED: Dynamic position sizing
+        # Quantity logic - 🔧 ENHANCED: AI Adaptive position sizing
         # 1. Calculate Base Target Notional Value
-        if self.risk_config.position_mode == "RATIO":
+        try:
+            account = await self.binance_client.get_account_info()
+            current_balance = account['balance']
+        except:
+            current_balance = 5000.0  # Fallback
+        
+        if self.risk_config.position_mode == "ADAPTIVE":
+            # 🔧 AI ADAPTIVE MODE: 잔고 × 총노출% ÷ 활성코인수
+            # 예: 5000 USDT × 20% ÷ 5 coins = 200 USDT/coin
             try:
-                account = await self.binance_client.get_account_info()
-                current_balance = account['balance']
-                base_notional = current_balance * self.risk_config.position_ratio
-            except:
-                base_notional = 150.0 # Fallback
+                # Get active coin count
+                selected_coins = await coin_selector.get_selected_coins()
+                active_coin_count = max(len(selected_coins), 1)  # 최소 1개
+                
+                # Calculate per-coin allocation
+                total_exposure = current_balance * self.risk_config.max_total_exposure
+                base_notional = total_exposure / active_coin_count
+                
+                logger.info(
+                    f"💰 Adaptive Mode: Balance={current_balance:.0f}, "
+                    f"Max Exposure={self.risk_config.max_total_exposure*100:.0f}%, "
+                    f"Active Coins={active_coin_count} → "
+                    f"Per Coin={base_notional:.0f} USDT ({(base_notional/current_balance)*100:.1f}%)"
+                )
+            except Exception as e:
+                logger.warning(f"Adaptive sizing failed: {e}, using fallback")
+                base_notional = current_balance * 0.03  # 3% fallback
+                
+        elif self.risk_config.position_mode == "RATIO":
+            # RATIO mode: 잔고의 고정 %
+            base_notional = current_balance * self.risk_config.position_ratio
+            logger.info(f"💰 Ratio Mode: {current_balance:.0f} × {self.risk_config.position_ratio*100:.1f}% = {base_notional:.0f} USDT")
+            
         else:
-            # FIXED mode
+            # FIXED mode: 고정 금액
             base_notional = 150.0
+            logger.info(f"💰 Fixed Mode: {base_notional:.0f} USDT per trade")
 
         # 2. 🔧 Dynamic Adjustment: Signal Strength × Volatility
         # - 강한 신호 (4~5점): +30~50%
@@ -1208,14 +1256,23 @@ class AutoTradingService:
                 except:
                     return round(qty, 3)
             
-            # 목표 금액
-            if self.risk_config.position_mode == "RATIO":
+            # 목표 금액 - 🔧 Use same adaptive logic as main trading
+            try:
+                account = await self.binance_client.get_account_info()
+                current_balance = account['balance']
+            except:
+                current_balance = 5000.0
+            
+            if self.risk_config.position_mode == "ADAPTIVE":
                 try:
-                    account = await self.binance_client.get_account_info()
-                    current_balance = account['balance']
-                    target_notional = current_balance * self.risk_config.position_ratio
+                    selected_coins = await coin_selector.get_selected_coins()
+                    active_coin_count = max(len(selected_coins), 1)
+                    total_exposure = current_balance * self.risk_config.max_total_exposure
+                    target_notional = total_exposure / active_coin_count
                 except:
-                    target_notional = 150.0
+                    target_notional = current_balance * 0.03
+            elif self.risk_config.position_mode == "RATIO":
+                target_notional = current_balance * self.risk_config.position_ratio
             else:
                 target_notional = 150.0
             
