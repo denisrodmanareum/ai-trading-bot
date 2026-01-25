@@ -185,7 +185,7 @@ async def health_check():
 
 
 # Import and register routers AFTER app creation
-from app.api import dashboard, trading, positions, ai_control, history, ai_analysis, quick_wins, advanced_data, dashboard_v2, coin_selection, settings
+from app.api import dashboard, trading, positions, ai_control, history, ai_analysis, quick_wins, advanced_data, dashboard_v2, coin_selection, settings, webhook
 
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard"])
 app.include_router(dashboard_v2.router, prefix="/api/dashboard", tags=["Dashboard V2"])
@@ -198,6 +198,7 @@ app.include_router(history.router, prefix="/api/history", tags=["History"])
 app.include_router(ai_analysis.router, tags=["AI Analysis"])
 app.include_router(quick_wins.router, prefix="/api", tags=["Quick Wins"])
 app.include_router(advanced_data.router, prefix="/api", tags=["Advanced Data"])
+app.include_router(webhook.router, prefix="/api/webhook", tags=["Webhook"])  # 🆕
 
 
 @app.get("/api/direct/recent-trades")

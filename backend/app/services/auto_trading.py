@@ -24,6 +24,12 @@ from app.services.coin_selector import coin_selector
 from trading.slippage_manager import SlippageManager  # 🆕
 from trading.partial_exit_manager import PartialExitManager  # 🆕
 from trading.trailing_sl_helper import move_sl_to_breakeven, update_trailing_stop_loss  # 🆕
+from ai.portfolio_manager import PortfolioManager  # 🆕 Phase 2
+from ai.crypto_vix import CryptoVIX  # 🆕 Phase 2
+from ai.performance_monitor import PerformanceMonitor  # 🆕 Phase 2
+from ai.hybrid_ai import HybridAI  # 🆕 Phase 3
+from ai.backtest_engine import BacktestEngine  # 🆕 Phase 3
+from ai.parameter_optimizer import ParameterOptimizer  # 🆕 Phase 3
 import os
 import pandas as pd
 
@@ -238,6 +244,7 @@ class AutoTradingService:
         self.brackets: dict[str, Dict] = {}
         self._heartbeat_task: Optional[asyncio.Task] = None
         self._daily_report_task: Optional[asyncio.Task] = None
+        self._performance_monitor_task: Optional[asyncio.Task] = None  # 🆕
         self._last_error_notify_ts: float = 0.0
         self._last_error_msg: str = ""
         
@@ -264,11 +271,19 @@ class AutoTradingService:
         self.mtf_analyzer = MultiTimeframeAnalyzer(binance_client)
         self.smc_analyzer = SmartMoneyConceptAnalyzer()
         
-        # 🆕 Slippage Manager
+        # 🆕 Phase 1: Order Optimization
         self.slippage_manager = SlippageManager(self.binance_client)
-        
-        # 🆕 Partial Exit Manager
         self.partial_exit_manager = PartialExitManager()
+        
+        # 🆕 Phase 2: Risk Optimization
+        self.portfolio_manager = PortfolioManager(self.binance_client)
+        self.crypto_vix = CryptoVIX(self.binance_client)
+        self.performance_monitor = PerformanceMonitor(self.binance_client, self)
+        
+        # 🆕 Phase 3: AI Enhancement
+        self.hybrid_ai = HybridAI()
+        self.backtest_engine = BacktestEngine(self.binance_client)
+        self.parameter_optimizer = ParameterOptimizer(self.backtest_engine)
         
         # Shadow Mode (A/B Testing)
         self.shadow_agent: Optional[TradingAgent] = None
@@ -371,6 +386,10 @@ class AutoTradingService:
             
         # 🔧 Restore state from DB
         await self._load_state()
+        
+        # 🆕 Start performance monitoring loop
+        if self._performance_monitor_task is None or self._performance_monitor_task.done():
+            self._performance_monitor_task = asyncio.create_task(self._performance_monitor_loop())
 
     async def check_risk_limits(self, account_info: Dict):
         """Check if trading should be stopped due to risk limits"""
@@ -449,7 +468,7 @@ class AutoTradingService:
         await self.stop_shadow_mode() # Stop shadow too
         
         # Cancel specific tasks
-        for t in (self._heartbeat_task, self._daily_report_task):
+        for t in (self._heartbeat_task, self._daily_report_task, self._performance_monitor_task):
             if t and not t.done():
                 t.cancel()
                 try:
@@ -459,6 +478,7 @@ class AutoTradingService:
         
         self._heartbeat_task = None
         self._daily_report_task = None
+        self._performance_monitor_task = None
         
         logger.info("Auto Trading Stopped")
 
@@ -1014,6 +1034,28 @@ class AutoTradingService:
                         else:
                             logger.info("✅ Extremely strong signal (5+), allowing despite concentration")
                 
+                # 🔧 CHECK 3: Portfolio Diversification (상관관계) 🆕
+                if len(positions) >= 2:  # 2개 이상 포지션 있을 때만
+                    try:
+                        diversification = await self.portfolio_manager.check_diversification(
+                            symbol, 
+                            "LONG" if action == 1 else "SHORT",
+                            [p for p in positions if abs(float(p.get('positionAmt', 0))) > 0]
+                        )
+                        
+                        if not diversification['is_diversified']:
+                            logger.warning(
+                                f"⚠️ Diversification Warning: {diversification['recommendation']}"
+                            )
+                            # 신호 강도 5 미만이면 차단
+                            if signal_strength < 5:
+                                logger.warning(f"🚫 Blocked due to high correlation")
+                                return
+                            else:
+                                logger.info("✅ Extremely strong signal, allowing despite correlation")
+                    except Exception as e:
+                        logger.error(f"Diversification check failed: {e}")
+                
                 logger.info(
                     f"📊 Exposure Check: {current_exposure_pct*100:.1f}%/{max_exposure*100:.1f}% | "
                     f"Positions: {active_positions} (L:{long_positions} S:{short_positions})"
@@ -1111,8 +1153,24 @@ class AutoTradingService:
                 volatility_multiplier = 0.8  # -20%
                 logger.info(f"⚠️ Medium Volatility: ATR {atr_pct:.2f}%, reducing position by 20%")
         
-        # 4. Final calculation
-        target_notional = base_notional * signal_multiplier * volatility_multiplier
+        # 🆕 4. VIX Adjustment: 시장 전체 변동성 고려
+        vix_multiplier = 1.0
+        try:
+            vix_score = await self.crypto_vix.calculate_vix()
+            vix_adjustment = self.crypto_vix.get_risk_adjustment(vix_score)
+            vix_multiplier = vix_adjustment['position_size_multiplier']
+            
+            if vix_multiplier != 1.0:
+                logger.info(
+                    f"📊 VIX Adjustment: Score={vix_score:.1f}, "
+                    f"Regime={vix_adjustment['regime']}, "
+                    f"Multiplier={vix_multiplier:.2f}"
+                )
+        except Exception as e:
+            logger.debug(f"VIX adjustment skipped: {e}")
+        
+        # 🆕 5. Final calculation (with VIX)
+        target_notional = base_notional * signal_multiplier * volatility_multiplier * vix_multiplier
         
         # 5. Ensure min notional > 100 USDT (Binance Testnet Limit)
         safe_notional = max(target_notional, 120.0) 
@@ -1121,7 +1179,11 @@ class AutoTradingService:
         quantity = max(0.002, min_qty) # Ensure at least 0.002 BTC
         quantity = round(quantity, 3) # Specific for BTC (3 decimal places)
         
-        logger.info(f"📊 Position Sizing: Base={base_notional:.0f}, Signal×{signal_multiplier:.1f}, Vol×{volatility_multiplier:.1f} → Final={safe_notional:.0f} USDT")
+        logger.info(
+            f"📊 Position Sizing: Base={base_notional:.0f}, "
+            f"Signal×{signal_multiplier:.1f}, Vol×{volatility_multiplier:.1f}, "
+            f"VIX×{vix_multiplier:.1f} → Final={safe_notional:.0f} USDT"
+        )
 
         quantity = await _round_quantity(symbol, quantity)
             
@@ -2346,6 +2408,29 @@ class AutoTradingService:
         except Exception as e:
             await self._notify_error(f"Daily report loop failed: {e}")
 
+    async def _performance_monitor_loop(self):
+        """🆕 Performance monitoring loop (every 6 hours)"""
+        try:
+            while self.running:
+                await asyncio.sleep(6 * 3600)  # 6시간마다
+                if not self.running:
+                    break
+                
+                # 성과 체크
+                result = await self.performance_monitor.check_performance_degradation(days=7)
+                
+                if result['status'] in ['warning', 'critical']:
+                    logger.warning(f"⚠️ Performance degradation detected: {result['status']}")
+                    
+                    # 재학습 필요 시
+                    if result['needs_retraining']:
+                        await self.performance_monitor.trigger_retraining()
+                
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            await self._notify_error(f"Performance monitor loop failed: {e}")
+    
     async def _send_daily_report(self):
         if not notification_manager.enabled_channels.get("telegram", False):
             return
