@@ -253,6 +253,24 @@ class BybitClient(BaseExchangeClient):
             }
         return {"high_24h": 0, "low_24h": 0, "volume_24h": 0}
 
+    async def get_recent_trades(self, symbol: str, limit: int = 30) -> List[Dict]:
+        """Get recent market trades"""
+        resp = await self._request("GET", "/v5/market/recent-trade", {
+            "category": "linear",
+            "symbol": symbol,
+            "limit": limit
+        })
+        if resp.get("retCode") == 0:
+            trades = resp["result"]["list"]
+            return [{
+                "id": t.get('execId', ''),
+                "price": t['price'],
+                "qty": t['size'],
+                "time": int(t['time']),
+                "is_buyer_maker": t['side'] == 'Sell'  # Sell side is maker on buy side
+            } for t in trades]
+        return []
+
     async def get_user_trades(self, symbol: str = "BTCUSDT", limit: int = 50) -> List[Dict]:
         """Get standardized user trade history"""
         resp = await self._request("GET", "/v5/execution/list", {
