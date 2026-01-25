@@ -12,7 +12,8 @@ import sys
 import os
 sys.path.append(os.getcwd())
 
-sys.modules['trading.binance_client'] = MagicMock()
+sys.modules['trading.exchange_factory'] = MagicMock()
+sys.modules['trading.base_client'] = MagicMock()
 sys.modules['ai.agent'] = MagicMock()
 sys.modules['app.services.price_stream'] = MagicMock()
 sys.modules['app.services.scheduler'] = MagicMock()
@@ -24,8 +25,8 @@ async def test_strategy_logic():
     logger.info("🧪 Testing Strategy Logic: Rule Captain + AI Filter")
 
     # Setup Service
-    binance_mock = AsyncMock()
-    binance_mock.get_position.return_value = {
+    exchange_mock = AsyncMock()
+    exchange_mock.get_position.return_value = {
         'symbol': 'BTCUSDT', 'position_amt': 0.0, 'entry_price': 0.0, 
         'unrealized_pnl': 0.0, 'leverage': 5
     }
@@ -36,7 +37,7 @@ async def test_strategy_logic():
     # We should patch the agent attribute after init if it creates one.
     
     # Mocking the internal TradingAgent creation if possible, or just overwrite it.
-    service = AutoTradingService(binance_mock, None)
+    service = AutoTradingService(exchange_mock, None)
     service.agent = agent_mock # Force inject mock
     service.running = True
     
@@ -69,7 +70,7 @@ async def test_strategy_logic():
 
     # Create DF with indicators once
     df = create_df(100.0, 1000.0, 50.0, 20.0, 20.0) # RSI 50, Stoch 20
-    binance_mock.get_klines.return_value = df
+    exchange_mock.get_klines.return_value = df
 
     # Scenario 1: No Signal + AI Buy -> Should HOLD
     logger.info("\n--- Scenario 1: No Rule + AI Buy ---")
@@ -77,17 +78,17 @@ async def test_strategy_logic():
     agent_mock.live_predict.return_value = 1 # LONG
     
     await service._trade_logic({'symbol': 'BTCUSDT', 'close': 100, 'high': 101, 'low': 99, 'volume': 1000, 'bb_upper': 110, 'bb_lower': 90, 'atr': 1})
-    binance_mock.place_market_order.assert_not_called()
+    exchange_mock.place_market_order.assert_not_called()
     logger.info("✅ Result: No Order (AI alone blocked)")
 
     # Scenario 2: Strong Rule Buy + AI Sell -> Should BUY (Momentum overrides)
     logger.info("\n--- Scenario 2: Strong Rule Buy + AI Sell ---")
     
     # Needs mismatch to trigger leverage change
-    binance_mock.get_position.return_value['leverage'] = 1 
+    exchange_mock.get_position.return_value['leverage'] = 1 
     
     # Mock place_market_order result
-    binance_mock.place_market_order.return_value = {'symbol': 'BTCUSDT', 'orderId': 123, 'price': '100.0', 'avgPrice': '100.0', 'executedQty': '0.001'}
+    exchange_mock.place_market_order.return_value = {'symbol': 'BTCUSDT', 'orderId': 123, 'price': '100.0', 'avgPrice': '100.0', 'executedQty': '0.001'}
 
     service.stoch_strategy.should_enter = MagicMock(return_value={
         "action": "LONG", "strength": 3, "leverage": 5, "reason": "Test Strong Buy"
@@ -97,7 +98,7 @@ async def test_strategy_logic():
     await service._trade_logic({'symbol': 'BTCUSDT', 'close': 100, 'high': 101, 'low': 99, 'volume': 1000, 'bb_upper': 110, 'bb_lower': 90, 'atr': 1})
     # We expect _execute_order to be called with action 1
     # Check if change_leverage called with 5
-    binance_mock.change_leverage.assert_called_with('BTCUSDT', 5)
+    exchange_mock.change_leverage.assert_called_with('BTCUSDT', 5)
     logger.info("✅ Result: Leverage set to 5x")
 
     # Scenario 3: Weak Rule Buy + AI Sell -> Should BLOCK
@@ -108,24 +109,24 @@ async def test_strategy_logic():
     agent_mock.live_predict.return_value = 2 # SHORT (Conflict)
     
     # Reset mocks
-    binance_mock.change_leverage.reset_mock()
+    exchange_mock.change_leverage.reset_mock()
     # Mock execute order to print
     service._execute_order = AsyncMock()
     
     await service._trade_logic({'symbol': 'BTCUSDT', 'close': 100, 'high': 101, 'low': 99, 'volume': 1000, 'bb_upper': 110, 'bb_lower': 90, 'atr': 1})
     
-    service._execute_order.assert_called_with('BTCUSDT', 0,  binance_mock.get_position.return_value, 100)
+    service._execute_order.assert_called_with('BTCUSDT', 0,  exchange_mock.get_position.return_value, 100)
     logger.info("✅ Result: Action 0 (HOLD) - Execution Blocked")
 
     # Scenario 4: AI Close -> Should ALLOW (Exit)
     logger.info("\n--- Scenario 4: AI Close (Exit) ---")
     # Set position
-    binance_mock.get_position.return_value = {'symbol': 'BTCUSDT', 'position_amt': 0.1, 'entry_price': 90, 'unrealized_pnl': 10, 'leverage': 5}
+    exchange_mock.get_position.return_value = {'symbol': 'BTCUSDT', 'position_amt': 0.1, 'entry_price': 90, 'unrealized_pnl': 10, 'leverage': 5}
     service.stoch_strategy.should_enter = MagicMock(return_value=None)
     agent_mock.live_predict.return_value = 3 # CLOSE
     
     await service._trade_logic({'symbol': 'BTCUSDT', 'close': 100, 'high': 101, 'low': 99, 'volume': 1000, 'bb_upper': 110, 'bb_lower': 90, 'atr': 1})
-    service._execute_order.assert_called_with('BTCUSDT', 3, binance_mock.get_position.return_value, 100)
+    service._execute_order.assert_called_with('BTCUSDT', 3, exchange_mock.get_position.return_value, 100)
     logger.info("✅ Result: Action 3 (CLOSE) - AI Exit Allowed")
 
 if __name__ == "__main__":

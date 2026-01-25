@@ -12,7 +12,8 @@ import os
 sys.path.append(os.getcwd())
 
 # Mock modules that might cause import errors if missing dependencies
-sys.modules['trading.binance_client'] = MagicMock()
+sys.modules['trading.exchange_factory'] = MagicMock()
+sys.modules['trading.base_client'] = MagicMock()
 sys.modules['ai.agent'] = MagicMock()
 sys.modules['app.services.price_stream'] = MagicMock()
 sys.modules['app.services.websocket_manager'] = MagicMock()
@@ -25,16 +26,16 @@ async def test_shadow_mode():
     logger.info("🧪 Starting Shadow Mode Verification...")
     
     # 1. Setup Service
-    binance_mock = AsyncMock()
+    exchange_mock = AsyncMock()
     # Mock position return
-    binance_mock.get_position.return_value = {
+    exchange_mock.get_position.return_value = {
         'symbol': 'BTCUSDT',
         'position_amt': 0.0,
         'entry_price': 0.0,
         'unrealized_pnl': 0.0,
         'leverage': 5
     }
-    binance_mock.get_account_info.return_value = {'balance': 1000, 'maint_margin': 0, 'margin_balance': 1000}
+    exchange_mock.get_account_info.return_value = {'balance': 1000, 'maint_margin': 0, 'margin_balance': 1000}
     # Mock klines for indicators
     import pandas as pd
     df = pd.DataFrame({
@@ -57,9 +58,9 @@ async def test_shadow_mode():
     # We need to mock get_klines to return this df, but AutoTradingService calls add_technical_indicators
     # so easier to mock `add_technical_indicators` in features
     
-    binance_mock.get_klines.return_value = df 
+    exchange_mock.get_klines.return_value = df 
     
-    service = AutoTradingService(binance_mock, MagicMock())
+    service = AutoTradingService(exchange_mock, MagicMock())
     
     # Mock Agent
     service.agent = MagicMock()
@@ -100,7 +101,7 @@ async def test_shadow_mode():
         # So we augment the DF in get_klines mock
         
         rich_df = df.copy() # Already has columns
-        binance_mock.get_klines.return_value = rich_df
+        exchange_mock.get_klines.return_value = rich_df
         
         logger.info(f"Initial Shadow Portfolio: {service.shadow_portfolio}")
         

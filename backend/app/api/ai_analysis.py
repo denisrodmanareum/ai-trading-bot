@@ -48,6 +48,9 @@ async def analyze_positions(db: Session = Depends(get_db)):
         
         analysis_results = []
         
+        for position in active_positions:
+            symbol = position['symbol']
+            
             try:
                 # Fetch market data
                 df = await exchange_client.get_klines(symbol, '15m', limit=100)

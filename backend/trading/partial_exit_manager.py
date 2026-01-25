@@ -53,7 +53,7 @@ class PartialExitManager:
         symbol: str,
         bracket: Dict,
         current_price: float,
-        binance_client
+        exchange_client
     ) -> Optional[Dict]:
         """
         부분 청산 체크 및 실행
@@ -129,7 +129,7 @@ class PartialExitManager:
                     )
                     
                     close_side = "SELL" if side == "LONG" else "BUY"
-                    order = await binance_client.place_market_order(
+                    order = await exchange_client.place_market_order(
                         symbol,
                         close_side,
                         exit_qty

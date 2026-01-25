@@ -15,8 +15,8 @@ class SlippageManager:
     - 체결가 추적 및 분석
     """
     
-    def __init__(self, binance_client):
-        self.binance_client = binance_client
+    def __init__(self, exchange_client):
+        self.exchange_client = exchange_client
         self.slippage_history = {}  # symbol -> list of slippage records
         self.max_slippage_pct = 0.1  # Default: 0.1% max slippage
         
@@ -44,7 +44,7 @@ class SlippageManager:
         """
         try:
             # 오더북 조회 (20단계)
-            orderbook = await self.binance_client.get_orderbook(symbol, limit=20)
+            orderbook = await self.exchange_client.get_orderbook(symbol, limit=20)
             
             if side == "BUY":
                 # Ask 사이드 분석
@@ -157,7 +157,7 @@ class SlippageManager:
         if estimation['estimated_slippage_pct'] <= max_slip:
             # 슬리피지 OK → 시장가 주문
             logger.info(f"✅ Using MARKET order (slippage within limit)")
-            order = await self.binance_client.place_market_order(symbol, side, quantity)
+            order = await self.exchange_client.place_market_order(symbol, side, quantity)
             order_type = "MARKET"
             
         else:
@@ -168,7 +168,7 @@ class SlippageManager:
             )
             
             # LIMIT 가격 설정 (빠른 체결을 위해 약간 불리하게)
-            ticker = await self.binance_client.get_ticker(symbol)
+            ticker = await self.exchange_client.get_ticker(symbol)
             
             if side == "BUY":
                 # Ask + 0.05% 프리미엄
@@ -177,7 +177,7 @@ class SlippageManager:
                 # Bid - 0.05% 디스카운트
                 limit_price = float(ticker['bidPrice']) * 0.9995
             
-            order = await self.binance_client.place_limit_order(
+            order = await self.exchange_client.place_limit_order(
                 symbol, side, quantity, limit_price, time_in_force='IOC'
             )
             order_type = "LIMIT_IOC"

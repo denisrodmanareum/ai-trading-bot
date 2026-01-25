@@ -6,7 +6,7 @@ from typing import Dict
 from loguru import logger
 
 
-async def move_sl_to_breakeven(binance_client, brackets, symbol: str, entry_price: float):
+async def move_sl_to_breakeven(exchange_client, brackets, symbol: str, entry_price: float):
     """
     손절가를 본전으로 이동
     첫 부분 익절 후 호출
@@ -36,13 +36,13 @@ async def move_sl_to_breakeven(binance_client, brackets, symbol: str, entry_pric
     try:
         # 기존 SL 주문 취소
         if bracket.get('sl_order_id'):
-            await binance_client.cancel_order(symbol, bracket['sl_order_id'])
+            await exchange_client.cancel_order(symbol, bracket['sl_order_id'])
         
         # 새 SL 주문 생성
         qty = bracket.get('qty', 0)
         stop_side = "SELL" if side == "LONG" else "BUY"
         
-        new_sl_order = await binance_client.place_stop_market_order(
+        new_sl_order = await exchange_client.place_stop_market_order(
             symbol=symbol,
             side=stop_side,
             quantity=abs(qty),
@@ -60,7 +60,7 @@ async def move_sl_to_breakeven(binance_client, brackets, symbol: str, entry_pric
 
 
 async def update_trailing_stop_loss(
-    binance_client,
+    exchange_client,
     brackets,
     symbol: str,
     current_price: float,
@@ -85,21 +85,21 @@ async def update_trailing_stop_loss(
         # +2% 이상 수익 → SL을 본전으로
         if pnl_pct >= 2.0 and current_sl < entry_price:
             new_sl = entry_price * 1.0001
-            await update_stop_loss_order(binance_client, brackets, symbol, new_sl, side, bracket)
+            await update_stop_loss_order(exchange_client, brackets, symbol, new_sl, side, bracket)
             logger.info(f"🛡️ {symbol} Trailing SL to breakeven @ {new_sl:.2f}")
         
         # +5% 이상 수익 → SL을 +2%로
         elif pnl_pct >= 5.0:
             target_sl = entry_price * 1.02
             if current_sl < target_sl:
-                await update_stop_loss_order(binance_client, brackets, symbol, target_sl, side, bracket)
+                await update_stop_loss_order(exchange_client, brackets, symbol, target_sl, side, bracket)
                 logger.info(f"📈 {symbol} Trailing SL to +2% @ {target_sl:.2f}")
         
         # +10% 이상 수익 → SL을 +5%로
         elif pnl_pct >= 10.0:
             target_sl = entry_price * 1.05
             if current_sl < target_sl:
-                await update_stop_loss_order(binance_client, brackets, symbol, target_sl, side, bracket)
+                await update_stop_loss_order(exchange_client, brackets, symbol, target_sl, side, bracket)
                 logger.info(f"🚀 {symbol} Trailing SL to +5% @ {target_sl:.2f}")
     
     elif side == "SHORT":
@@ -109,26 +109,26 @@ async def update_trailing_stop_loss(
         # +2% 이상 수익 → SL을 본전으로
         if pnl_pct >= 2.0 and current_sl > entry_price:
             new_sl = entry_price * 0.9999
-            await update_stop_loss_order(binance_client, brackets, symbol, new_sl, side, bracket)
+            await update_stop_loss_order(exchange_client, brackets, symbol, new_sl, side, bracket)
             logger.info(f"🛡️ {symbol} Trailing SL to breakeven @ {new_sl:.2f}")
         
         # +5% 이상 수익 → SL을 -2%로
         elif pnl_pct >= 5.0:
             target_sl = entry_price * 0.98
             if current_sl > target_sl:
-                await update_stop_loss_order(binance_client, brackets, symbol, target_sl, side, bracket)
+                await update_stop_loss_order(exchange_client, brackets, symbol, target_sl, side, bracket)
                 logger.info(f"📈 {symbol} Trailing SL to -2% @ {target_sl:.2f}")
         
         # +10% 이상 수익 → SL을 -5%로
         elif pnl_pct >= 10.0:
             target_sl = entry_price * 0.95
             if current_sl > target_sl:
-                await update_stop_loss_order(binance_client, brackets, symbol, target_sl, side, bracket)
+                await update_stop_loss_order(exchange_client, brackets, symbol, target_sl, side, bracket)
                 logger.info(f"🚀 {symbol} Trailing SL to -5% @ {target_sl:.2f}")
 
 
 async def update_stop_loss_order(
-    binance_client,
+    exchange_client,
     brackets,
     symbol: str,
     new_sl_price: float,
@@ -139,13 +139,13 @@ async def update_stop_loss_order(
     try:
         # 기존 SL 취소
         if bracket.get('sl_order_id'):
-            await binance_client.cancel_order(symbol, bracket['sl_order_id'])
+            await exchange_client.cancel_order(symbol, bracket['sl_order_id'])
         
         # 새 SL 생성
         qty = bracket.get('qty', 0)
         stop_side = "SELL" if side == "LONG" else "BUY"
         
-        new_sl_order = await binance_client.place_stop_market_order(
+        new_sl_order = await exchange_client.place_stop_market_order(
             symbol=symbol,
             side=stop_side,
             quantity=abs(qty),
