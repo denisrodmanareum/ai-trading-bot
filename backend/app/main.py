@@ -19,6 +19,7 @@ from app.core.config import settings
 from app.services.websocket_manager import WebSocketManager
 from app.services.price_stream import PriceStreamService
 from app.services.auto_trading import AutoTradingService
+from app.services.telegram_bot import TelegramBotService
 
 # Global client
 exchange_client = None
@@ -57,6 +58,14 @@ async def lifespan(app: FastAPI):
             logger.info("Scheduling Auto Trading start in 10 seconds...")
             await asyncio.sleep(10)
             await auto_trading_service.start()
+            
+            # --- START TELEGRAM BOT SERVICE ---
+            try:
+                global reporter_service
+                reporter_service = TelegramBotService(exchange_client, auto_trading_service)
+                await reporter_service.start()
+            except Exception as te:
+                logger.error(f"Failed to start Telegram Bot Service: {te}")
             
             # --- STARTUP NOTIFICATION ---
             try:

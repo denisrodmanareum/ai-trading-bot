@@ -1,0 +1,21 @@
+2026-01-26 13:17:45.569 | INFO     | ai.deep_models.train_lstm:train_lstm:33 - \U0001f680 Starting LSTM training for BTCUSDT (15m)...
+2026-01-26 13:17:45.569 | INFO     | ai.trainer:fetch_training_data:22 - Fetching 2 days of 15m data for BTCUSDT (+200 warmup)
+2026-01-26 13:17:45.569 | INFO     | trading.exchange_factory:get_client:26 - \U0001f504 Switching Exchange Client to: BINANCE
+2026-01-26 13:17:45.747 | INFO     | trading.binance_client:initialize:32 - \u2705 Binance Client initialized (Time Offset: 18ms)
+Traceback (most recent call last):
+  File "C:\ai\ai-trading-bot\backend\train_15m_lstm_debug.py", line 14, in main
+    await train_lstm(
+  File "C:\ai\ai-trading-bot\backend\ai\deep_models\train_lstm.py", line 36, in train_lstm
+    df = await fetch_training_data(symbol, interval, days)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\ai\ai-trading-bot\backend\ai\trainer.py", line 56, in fetch_training_data
+    klines = await client.get_raw_klines(
+                   ^^^^^^^^^^^^^^^^^^^^^^
+TypeError: BinanceClient.get_raw_klines() got an unexpected keyword argument 'endTime'
+Starting DEBUG LSTM training for 15m...
+DEBUG Training failed: BinanceClient.get_raw_klines() got an unexpected keyword argument 'endTime'
+Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x0000018CD4F60350>
+Unclosed connector
+connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x0000018CDCA412B0>, 85906.015)])']
+connector: <aiohttp.connector.TCPConnector object at 0x0000018CD7DBAA50>

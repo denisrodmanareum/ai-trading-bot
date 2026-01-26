@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from ai.agent import TradingAgent
 from ai.trainer import train_agent, backtest_agent
+from ai.deep_models.train_lstm import train_lstm
 from app.core.config import settings
 from app.services.scheduler import SchedulerService
 
@@ -210,6 +211,7 @@ async def run_training_task(
     training_status["status"] = "Training..."
     
     try:
+        # 1. Train PPO Agent
         model_path = await train_agent(
             symbol=symbol,
             interval=interval,
@@ -218,6 +220,20 @@ async def run_training_task(
             leverage=leverage,
             reward_strategy=reward_strategy
         )
+        
+        # 2. Train LSTM Predictor (New!)
+        try:
+            # For LSTM, we use a fixed epochs for stability in background
+            logger.info(f"Starting secondary LSTM training for {symbol} ({interval})...")
+            lstm_path = await train_lstm(
+                symbol=symbol,
+                interval=interval,
+                days=days,
+                epochs=30 # Consistent baseline
+            )
+            logger.info(f"LSTM training completed: {lstm_path}")
+        except Exception as e:
+            logger.warning(f"Secondary LSTM training failed (PPO still valid): {e}")
         
         # Load the trained model
         if model_path and os.path.exists(model_path):

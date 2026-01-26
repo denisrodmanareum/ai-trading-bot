@@ -5,9 +5,19 @@ from pydantic_settings import BaseSettings
 from pydantic import field_validator
 from typing import List, Union
 
+import os
+from pathlib import Path
+
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# config.py is in backend/app/core/ so we go up 3 levels to reach backend/ and 4 to reach root
+BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+ENV_FILE = BASE_DIR / ".env"
 
 class Settings(BaseSettings):
     """Application settings"""
+    
+    # Database
+    DATABASE_URL: str = "sqlite:///./trading_bot.db"
     
     # Binance API
     BINANCE_API_KEY: str = ""
@@ -31,7 +41,7 @@ class Settings(BaseSettings):
     BACKEND_PORT: int = 8000
     
     # AI
-    AI_MODEL_PATH: str = "data/models/"
+    AI_MODEL_PATH: str = str(BASE_DIR / "backend" / "data" / "models")
     AI_LEARNING_RATE: float = 0.0003
     AI_GAMMA: float = 0.99
     AI_BATCH_SIZE: int = 64
@@ -50,7 +60,7 @@ class Settings(BaseSettings):
         return v
     
     class Config:
-        env_file = ".env"
+        env_file = str(ENV_FILE) if ENV_FILE.exists() else ".env"
         extra = "ignore"
 
 

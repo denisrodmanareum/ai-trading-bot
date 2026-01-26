@@ -76,7 +76,7 @@ class BaseExchangeClient(ABC):
         pass
 
     @abstractmethod
-    async def get_raw_klines(self, symbol: str, interval: str, limit: int) -> List[List]:
+    async def get_raw_klines(self, symbol: str, interval: str, limit: int, startTime: Optional[int] = None, endTime: Optional[int] = None) -> List[List]:
         """Get raw klines (list of lists)"""
         pass
 
@@ -101,6 +101,6 @@ class BaseExchangeClient(ABC):
         pass
 
     @abstractmethod
-    async def get_user_trades(self, symbol: str, limit: int) -> List[Dict]:
+    async def get_user_trades(self, symbol: str, limit: int = 50, startTime: Optional[int] = None, endTime: Optional[int] = None) -> List[Dict]:
         """Get user trade history with PnL"""
         pass

@@ -13,6 +13,7 @@ router = APIRouter()
 
 
 class CoinSelectionConfig(BaseModel):
+    mode: Optional[str] = None  # 🆕 BTC_ONLY or HYBRID
     core_coins: Optional[List[str]] = None
     max_altcoins: Optional[int] = None
     max_total: Optional[int] = None

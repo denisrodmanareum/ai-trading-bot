@@ -198,7 +198,8 @@ class BalanceBasedStrategyManager:
         self,
         balance: float,
         ai_confidence: float,
-        is_core: bool
+        is_core: bool,
+        is_btc_only: bool = False
     ) -> float:
         """
         동적 포지션 사이징 계산
@@ -208,17 +209,29 @@ class BalanceBasedStrategyManager:
         2. AI 확신도 (0.5~1.5 가중치)
         3. 최근 성과 (0.5~1.3 가중치)
         4. 복구 모드 (0.7 페널티)
+        5. BTC Only 모드 (3.0배 가중치 - 집중 투자)
         
         Args:
             balance: 현재 잔고
             ai_confidence: AI 확신도
             is_core: 코어 코인 여부
+            is_btc_only: BTC Only 모드 여부 (True일 경우 비중 대폭 확대)
             
         Returns:
             포지션 크기 (USDT)
         """
         tier = self.get_current_tier(balance)
-        base_ratio = tier["core_ratio"] if is_core else tier["alt_ratio"]
+        
+        # 0. BTC Only 가중치 (집중 투자: 33% 고정)
+        if is_btc_only:
+            base_ratio = 0.33
+            max_ratio_limit = 0.50
+            min_ratio_limit = 0.15
+            logger.debug(f"₿ BTC Only Mode: Setting base ratio to 33%")
+        else:
+            base_ratio = tier["core_ratio"] if is_core else tier["alt_ratio"]
+            max_ratio_limit = base_ratio * 2.0
+            min_ratio_limit = base_ratio * 0.3
         
         # 1. AI 확신도 가중치
         if ai_confidence >= 0.95:
@@ -250,9 +263,7 @@ class BalanceBasedStrategyManager:
         final_ratio = base_ratio * conf_weight * perf_weight * recovery_weight
         
         # 5. 최소/최대 제한
-        max_ratio = base_ratio * 2.0    # 최대 2배까지만
-        min_ratio = base_ratio * 0.3    # 최소 30%
-        final_ratio = max(min_ratio, min(final_ratio, max_ratio))
+        final_ratio = max(min_ratio_limit, min(final_ratio, max_ratio_limit))
         
         # 6. 포지션 크기 계산
         position_size = balance * final_ratio

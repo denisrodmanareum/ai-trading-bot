@@ -217,17 +217,21 @@ class BybitClient(BaseExchangeClient):
         """Get symbols info"""
         return await self._request("GET", "/v5/market/instruments-info", {"category": "linear"})
 
-    async def get_raw_klines(self, symbol: str, interval: str, limit: int = 50) -> List[List]:
+    async def get_raw_klines(self, symbol: str, interval: str, limit: int = 50, startTime: Optional[int] = None, endTime: Optional[int] = None) -> List[List]:
         """Get raw klines (list of lists)"""
         mapping = {"1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D"}
         bybit_interval = mapping.get(interval, "60")
         
-        resp = await self._request("GET", "/v5/market/kline", {
+        params = {
             "category": "linear",
             "symbol": symbol,
             "interval": bybit_interval,
             "limit": limit
-        })
+        }
+        if startTime: params["start"] = startTime # Bybit uses 'start' and 'end'
+        if endTime: params["end"] = endTime
+        
+        resp = await self._request("GET", "/v5/market/kline", params)
         
         if resp.get("retCode") == 0:
             return resp["result"]["list"]

@@ -1,0 +1,20 @@
+2026-01-26 13:19:15.847 | INFO     | ai.deep_models.train_lstm:train_lstm:33 - \U0001f680 Starting LSTM training for BTCUSDT (15m)...
+2026-01-26 13:19:15.847 | INFO     | ai.trainer:fetch_training_data:22 - Fetching 45 days of 15m data for BTCUSDT (+200 warmup)
+2026-01-26 13:19:15.847 | INFO     | trading.exchange_factory:get_client:26 - \U0001f504 Switching Exchange Client to: BINANCE
+2026-01-26 13:19:16.024 | INFO     | trading.binance_client:initialize:32 - \u2705 Binance Client initialized (Time Offset: 18ms)
+2026-01-26 13:19:17.579 | INFO     | ai.features:add_technical_indicators:27 - Calculating technical indicators...
+2026-01-26 13:19:17.612 | INFO     | ai.features:add_technical_indicators:100 - Added 24 technical indicators
+2026-01-26 13:19:17.613 | INFO     | ai.trainer:fetch_training_data:95 - Fetched 4520 candles with indicators
+2026-01-26 13:19:17.616 | INFO     | ai.deep_models.lstm_predictor:__init__:256 - Created new lstm model
+2026-01-26 13:20:32.925 | INFO     | ai.deep_models.train_lstm:train_lstm:103 - Epoch [10/50], Loss: 0.126941
+2026-01-26 13:21:50.069 | INFO     | ai.deep_models.train_lstm:train_lstm:103 - Epoch [20/50], Loss: 0.108514
+2026-01-26 13:23:02.756 | INFO     | ai.deep_models.train_lstm:train_lstm:103 - Epoch [30/50], Loss: 0.076547
+2026-01-26 13:24:17.083 | INFO     | ai.deep_models.train_lstm:train_lstm:103 - Epoch [40/50], Loss: 0.045694
+2026-01-26 13:25:29.212 | INFO     | ai.deep_models.train_lstm:train_lstm:103 - Epoch [50/50], Loss: 0.033109
+2026-01-26 13:25:29.220 | INFO     | ai.deep_models.lstm_predictor:save_model:348 - Model saved to ./data/models\lstm_BTCUSDT_15m_20260126_1325.pt
+2026-01-26 13:25:29.220 | INFO     | ai.deep_models.train_lstm:train_lstm:120 - \U0001f5d1\ufe0f Cleaned up old LSTM model: lstm_BTCUSDT_15m_20260126_1318.pt
+2026-01-26 13:25:29.222 | INFO     | ai.deep_models.train_lstm:train_lstm:124 - \u2705 LSTM training finished. Model saved: lstm_BTCUSDT_15m_20260126_1325.pt
+Starting LSTM training for 15m...
+Training complete!
+Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x000001AD544CB6D0>

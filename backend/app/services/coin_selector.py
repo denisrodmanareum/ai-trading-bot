@@ -22,7 +22,7 @@ class CoinSelector:
         
         # Default configuration
         self.config = {
-            'mode': 'HYBRID',  # 🆕 BTC_ONLY or HYBRID
+            'mode': 'BTC_ONLY',  # 🆕 BTC_ONLY or HYBRID (Default changed to BTC_ONLY)
             'core_coins': ['BTC', 'ETH', 'SOL', 'BNB'],
             'max_altcoins': 3,
             'max_total': 7,
@@ -43,9 +43,10 @@ class CoinSelector:
         }
         
         # Initialize with fallback coins (important for first run)
-        self.selected_coins = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT']
-        self.last_rebalance = None
-        self.coin_scores = {s: 80.0 for s in self.selected_coins}
+        # BTC Only 모드에 맞춰 초기화
+        self.selected_coins = ['BTCUSDT']
+        self.last_rebalance = datetime.now()
+        self.coin_scores = {'BTCUSDT': 100.0}
     
     async def get_selected_coins(self) -> List[str]:
         """

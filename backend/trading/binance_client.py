@@ -4,7 +4,7 @@ Simplified Binance Futures Client
 from binance import AsyncClient
 from loguru import logger
 import time
-from typing import Dict, List
+from typing import Dict, List, Optional
 from app.core.config import settings
 from trading.base_client import BaseExchangeClient
 
@@ -86,14 +86,18 @@ class BinanceClient(BaseExchangeClient):
             df[col] = df[col].astype(float)
         return df
 
-    async def get_raw_klines(self, symbol="BTCUSDT", interval="1m", limit=50):
+    async def get_raw_klines(self, symbol="BTCUSDT", interval="1m", limit=50, startTime=None, endTime=None):
         """Get raw klines (list of lists) with connection check"""
         await self.ensure_connection()
-        return await self.client.futures_klines(
-            symbol=symbol,
-            interval=interval,
-            limit=limit
-        )
+        params = {
+            "symbol": symbol,
+            "interval": interval,
+            "limit": limit
+        }
+        if startTime: params["startTime"] = startTime
+        if endTime: params["endTime"] = endTime
+        
+        return await self.client.futures_klines(**params)
 
     async def get_position(self, symbol="BTCUSDT"):
         """Get safe position info for single symbol"""
@@ -428,11 +432,15 @@ class BinanceClient(BaseExchangeClient):
             logger.error(f"Failed to cancel order: {e}")
             raise
 
-    async def get_user_trades(self, symbol: str = "BTCUSDT", limit: int = 50) -> List[Dict]:
+    async def get_user_trades(self, symbol: str = "BTCUSDT", limit: int = 50, startTime: Optional[int] = None, endTime: Optional[int] = None) -> List[Dict]:
         """Get user trade history with PnL (Standardized)"""
         try:
             await self.ensure_connection()
-            trades = await self.client.futures_account_trades(symbol=symbol, limit=limit)
+            params = {"symbol": symbol, "limit": limit}
+            if startTime: params["startTime"] = startTime
+            if endTime: params["endTime"] = endTime
+            
+            trades = await self.client.futures_account_trades(**params)
             return [{
                 "symbol": t['symbol'],
                 "price": float(t['price']),

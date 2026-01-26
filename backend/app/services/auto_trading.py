@@ -1185,31 +1185,33 @@ class AutoTradingService:
                 ai_conf = market_state.get('ai_confidence', 0.7) if market_state else 0.7
                 
                 # 🆕 Balance-Based Dynamic Position Sizing
+                is_btc_only = coin_selector.config.get('mode') == 'BTC_ONLY'
                 base_notional = self.balance_strategy.calculate_dynamic_position_size(
                     balance=current_balance,
                     ai_confidence=ai_conf,
-                    is_core=is_core
+                    is_core=is_core,
+                    is_btc_only=is_btc_only
                 )
                 
                 # 티어 정보 로깅
                 tier_info = self.balance_strategy.get_current_tier(current_balance)
+                mode_str = "BTC_ONLY" if is_btc_only else "HYBRID"
                 logger.info(
-                    f"💰 Dynamic Sizing [{tier_info['tier_name']} Tier]: {symbol} = "
+                    f"💰 Dynamic Sizing [{tier_info['tier_name']} Tier | {mode_str}]: {symbol} = "
                     f"{base_notional:.0f} USDT "
                     f"(Balance: {current_balance:.0f}, AI Conf: {ai_conf:.1%}, "
-                    f"Recent Winrate: {self.balance_strategy.get_recent_winrate():.1%})"
+                    f"Recent Winrate: {self.balance_strategy.get_recent_winrate():.1%}"
                 )
             except Exception as e:
                 logger.warning(f"Dynamic sizing failed: {e}, using fallback")
                 # Fallback: 기존 로직
-                is_core = symbol in self.risk_config.core_coins
-                ai_conf = market_state.get('ai_confidence', 0.7) if market_state else 0.7
-                ai_weight = 1.5 if ai_conf >= 0.90 else (1.2 if ai_conf >= 0.80 else (0.7 if ai_conf <= 0.60 else 1.0))
-                
-                if is_core:
-                    base_notional = current_balance * self.risk_config.core_coin_ratio * ai_weight
-                else:
-                    base_notional = current_balance * self.risk_config.alt_coin_ratio * ai_weight
+                is_btc_only = coin_selector.config.get('mode') == 'BTC_ONLY'
+                base_notional = self.balance_strategy.calculate_dynamic_position_size(
+                    balance=current_balance, 
+                    ai_confidence=ai_conf, 
+                    is_core=is_core,
+                    is_btc_only=is_btc_only
+                )
                 
         elif self.risk_config.position_mode == "RATIO":
             # RATIO mode: 잔고의 고정 %

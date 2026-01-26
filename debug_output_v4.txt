@@ -1,0 +1,17 @@
+2026-01-26 13:18:54.019 | INFO     | ai.deep_models.train_lstm:train_lstm:33 - \U0001f680 Starting LSTM training for BTCUSDT (15m)...
+2026-01-26 13:18:54.019 | INFO     | ai.trainer:fetch_training_data:22 - Fetching 2 days of 15m data for BTCUSDT (+200 warmup)
+2026-01-26 13:18:54.019 | INFO     | trading.exchange_factory:get_client:26 - \U0001f504 Switching Exchange Client to: BINANCE
+2026-01-26 13:18:54.196 | INFO     | trading.binance_client:initialize:32 - \u2705 Binance Client initialized (Time Offset: 18ms)
+2026-01-26 13:18:54.289 | INFO     | ai.features:add_technical_indicators:27 - Calculating technical indicators...
+2026-01-26 13:18:54.306 | INFO     | ai.features:add_technical_indicators:100 - Added 24 technical indicators
+2026-01-26 13:18:54.306 | INFO     | ai.trainer:fetch_training_data:95 - Fetched 392 candles with indicators
+2026-01-26 13:18:54.308 | INFO     | ai.deep_models.lstm_predictor:__init__:256 - Created new lstm model
+2026-01-26 13:18:56.501 | INFO     | ai.deep_models.lstm_predictor:save_model:348 - Model saved to ./data/models\lstm_BTCUSDT_15m_20260126_1318.pt
+2026-01-26 13:18:56.501 | INFO     | ai.deep_models.train_lstm:train_lstm:124 - \u2705 LSTM training finished. Model saved: lstm_BTCUSDT_15m_20260126_1318.pt
+Starting DEBUG LSTM training for 15m...
+DEBUG Training complete!
+Unclosed client session
+client_session: <aiohttp.client.ClientSession object at 0x0000025DC3BAA490>
+Unclosed connector
+connections: ['deque([(<aiohttp.client_proto.ResponseHandler object at 0x0000025DC8821400>, 85974.468)])', 'deque([(<aiohttp.client_proto.ResponseHandler object at 0x0000025DC88210F0>, 85974.546)])']
+connector: <aiohttp.connector.TCPConnector object at 0x0000025DC6AE29D0>
