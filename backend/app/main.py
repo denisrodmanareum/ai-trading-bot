@@ -95,15 +95,7 @@ async def lifespan(app: FastAPI):
                 # 3. Get Positions
                 positions = await exchange_client.get_all_positions()
                 
-                # 4. Get Public IP (Best effort)
-                import socket
-                import urllib.request
-                try:
-                    external_ip = urllib.request.urlopen('https://api.ipify.org').read().decode('utf8')
-                except:
-                    external_ip = "Unknown (Network Error)"
-                
-                host_info = f"{socket.gethostname()} ({external_ip})"
+                host_info = f"{socket.gethostname()} (Local)"
 
                 # 5. Send Notification
                 from app.services.notifications import notify_startup

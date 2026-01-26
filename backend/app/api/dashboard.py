@@ -29,38 +29,14 @@ async def get_dashboard_overview() -> Dict:
         total_unrealized_pnl = sum(pos['unrealized_pnl'] for pos in positions)
         funding_rate = await main.exchange_client.get_funding_rate("BTCUSDT")
         
-        # 2. Market Metrics (Kimchi Premium)
+        # 2. Market Metrics (Kimchi Premium - DISABLED for restricted network)
         kimp = 0.0
         btc_price_krw = 0.0
         usd_krw_rate = 1400.0 # Fallback
         btc_dominance = 0.0
         
-        try:
-            import aiohttp
-            async with aiohttp.ClientSession() as session:
-                # Upbit Price
-                async with session.get('https://api.upbit.com/v1/ticker?markets=KRW-BTC') as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        btc_price_krw = float(data[0]['trade_price'])
-                
-                # Exchange Rate
-                async with session.get('https://open.er-api.com/v6/latest/USD') as resp:
-                     if resp.status == 200:
-                         data = await resp.json()
-                         usd_krw_rate = float(data['rates']['KRW'])
-                         
-                async with session.get('https://api.coingecko.com/api/v3/global') as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-                        btc_dominance = float(data['data']['market_cap_percentage']['btc'])
-                        
-            if btc_price > 0 and usd_krw_rate > 0:
-                converted_krw_to_usd = btc_price_krw / usd_krw_rate
-                kimp = ((converted_krw_to_usd / btc_price) - 1) * 100
-                
-        except Exception as e:
-            logger.warning(f"Failed to fetch market metrics: {e}")
+        # NOTE: External API calls (Upbit, CoinGecko) removed to prevent DNS errors on restricted networks
+        # If needed, implement a local calculation or use internal exchange data only.
 
         # 3. Additional Pro Metrics (Safely)
         mark_price_data = {}

@@ -126,8 +126,6 @@ function Settings() {
           active_exchange: data.active_exchange || 'BINANCE',
           binance_key: data.binance_key || '',
           binance_secret: '',
-          bybit_key: data.bybit_key || '',
-          bybit_secret: '',
           testnet: !!data.testnet
         });
       }
@@ -143,8 +141,6 @@ function Settings() {
         active_exchange: apiConfig.active_exchange,
         binance_key: apiConfig.binance_key,
         binance_secret: apiConfig.binance_secret || undefined,
-        bybit_key: apiConfig.bybit_key,
-        bybit_secret: apiConfig.bybit_secret || undefined,
         testnet: apiConfig.testnet
       };
 
@@ -711,36 +707,6 @@ function Settings() {
 
             <div style={{ display: 'grid', gap: '1.5rem' }}>
 
-              {/* Active Exchange Selector */}
-              <div style={{ background: '#000', padding: '1.2rem', borderRadius: '4px', border: '1px solid #222' }}>
-                <label style={{ fontSize: '0.75rem', color: '#666', marginBottom: '0.8rem', display: 'block', fontWeight: '800' }}>
-                  ACTIVE EXCHANGE (활성 거래소)
-                </label>
-                <div style={{ display: 'flex', gap: '1rem' }}>
-                  {['BINANCE', 'BYBIT'].map(ex => (
-                    <button
-                      key={ex}
-                      onClick={() => setApiConfig({ ...apiConfig, active_exchange: ex })}
-                      disabled={ex === 'BYBIT'}  // 🔒 BYBIT 임시 비활성화
-                      style={{
-                        flex: 1,
-                        padding: '1rem',
-                        background: apiConfig.active_exchange === ex ? 'rgba(240, 185, 11, 0.1)' : '#0a0a0a',
-                        border: `1px solid ${apiConfig.active_exchange === ex ? '#f0b90b' : '#222'}`,
-                        color: ex === 'BYBIT' ? '#333' : (apiConfig.active_exchange === ex ? '#f0b90b' : '#666'),
-                        borderRadius: '4px',
-                        cursor: ex === 'BYBIT' ? 'not-allowed' : 'pointer',
-                        fontWeight: '900',
-                        fontSize: '0.9rem',
-                        transition: 'all 0.2s',
-                        opacity: ex === 'BYBIT' ? 0.5 : 1
-                      }}
-                    >
-                      {ex}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
               {/* Testnet Toggle */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#000', padding: '1rem', borderRadius: '2px', border: '1px solid #222' }}>
@@ -789,32 +755,6 @@ function Settings() {
                 </div>
               </div>
 
-              {/* Bybit Section */}
-              <div style={{ border: '1px solid #1a1a1a', padding: '1.2rem', borderRadius: '4px', background: '#080808' }}>
-                <h4 style={{ color: '#ff9d00', fontSize: '0.85rem', marginBottom: '1rem' }}>BYBIT SETTINGS</h4>
-                <div style={{ display: 'grid', gap: '1rem' }}>
-                  <div>
-                    <label style={{ fontSize: '0.65rem', color: '#444', marginBottom: '0.4rem', display: 'block' }}>API KEY</label>
-                    <input
-                      type="text"
-                      value={apiConfig.bybit_key}
-                      onChange={(e) => setApiConfig({ ...apiConfig, bybit_key: e.target.value })}
-                      placeholder="Bybit API Key"
-                      style={{ width: '100%', padding: '0.75rem', background: '#000', border: '1px solid #222', borderRadius: '2px', color: '#fff', fontSize: '0.8rem', fontFamily: 'monospace' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.65rem', color: '#444', marginBottom: '0.4rem', display: 'block' }}>API SECRET</label>
-                    <input
-                      type="password"
-                      value={apiConfig.bybit_secret}
-                      onChange={(e) => setApiConfig({ ...apiConfig, bybit_secret: e.target.value })}
-                      placeholder="Insert Secret Key (Hidden)"
-                      style={{ width: '100%', padding: '0.75rem', background: '#000', border: '1px solid #222', borderRadius: '2px', color: '#fff', fontSize: '0.8rem', fontFamily: 'monospace' }}
-                    />
-                  </div>
-                </div>
-              </div>
 
               {/* Save Button */}
               <button

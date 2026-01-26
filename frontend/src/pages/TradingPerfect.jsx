@@ -133,28 +133,14 @@ function TradingPerfect() {
 
   // Price WebSocket
   useEffect(() => {
-    if (activeExchange === 'BINANCE') {
-      const ws = new WebSocket(`wss://fstream.binance.com/ws/${symbol.toLowerCase()}@markPrice@1s`);
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        setCurrentPrice(parseFloat(data.p));
-      };
-      return () => ws.close();
-    } else {
-      // Bybit Fallback: Polling (Bybit WebSocket is complex for V5 without library)
-      const fetchBybitPrice = async () => {
-        try {
-          const res = await fetch(`/api/trading/price/${symbol}`);
-          if (res.ok) {
-            const data = await res.json();
-            setCurrentPrice(data.price);
-          }
-        } catch (e) { }
-      };
-      const pId = setInterval(fetchBybitPrice, 2000);
-      return () => clearInterval(pId);
-    }
-  }, [symbol, activeExchange]);
+    // Always use Binance WebSocket
+    const ws = new WebSocket(`wss://fstream.binance.com/ws/${symbol.toLowerCase()}@markPrice@1s`);
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      setCurrentPrice(parseFloat(data.p));
+    };
+    return () => ws.close();
+  }, [symbol]);
 
   // Total calculation
   useEffect(() => {
