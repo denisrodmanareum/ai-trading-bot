@@ -259,15 +259,12 @@ async def test_telegram_notification(req: TelegramTestRequest):
 class ApiConfig(BaseModel):
     active_exchange: str
     binance_key: str
-    bybit_key: str
     testnet: bool
 
 class ApiConfigUpdate(BaseModel):
-    active_exchange: str  # "BINANCE" or "BYBIT"
+    active_exchange: str  # "BINANCE"
     binance_key: Optional[str] = None
     binance_secret: Optional[str] = None
-    bybit_key: Optional[str] = None
-    bybit_secret: Optional[str] = None
     testnet: bool
 
 # --- API Configuration Endpoints ---
@@ -278,8 +275,7 @@ async def get_api_config():
     return {
         "active_exchange": settings.ACTIVE_EXCHANGE,
         "binance_key": f"{settings.BINANCE_API_KEY[:4]}...{settings.BINANCE_API_KEY[-4:]}" if len(settings.BINANCE_API_KEY) > 8 else "****",
-        "bybit_key": f"{settings.BYBIT_API_KEY[:4]}...{settings.BYBIT_API_KEY[-4:]}" if len(settings.BYBIT_API_KEY) > 8 else "****",
-        "testnet": settings.BINANCE_TESTNET # Using Binance testnet flag as global for now
+        "testnet": settings.BINANCE_TESTNET
     }
 
 @router.post("/api-config")
@@ -287,16 +283,13 @@ async def update_api_config(config: ApiConfigUpdate):
     """Update API configuration and exchange selection"""
     try:
         # 1. Update memory
-        if config.active_exchange not in ["BINANCE", "BYBIT"]:
-            raise HTTPException(status_code=400, detail="Invalid exchange")
+        if config.active_exchange not in ["BINANCE"]:
+            raise HTTPException(status_code=400, detail="Invalid exchange. Only BINANCE is supported.")
             
         settings.ACTIVE_EXCHANGE = config.active_exchange
         if config.binance_key: settings.BINANCE_API_KEY = config.binance_key
         if config.binance_secret: settings.BINANCE_API_SECRET = config.binance_secret
-        if config.bybit_key: settings.BYBIT_API_KEY = config.bybit_key
-        if config.bybit_secret: settings.BYBIT_API_SECRET = config.bybit_secret
         settings.BINANCE_TESTNET = config.testnet
-        settings.BYBIT_TESTNET = config.testnet
         
         # 2. Update .env file
         env_path = ".env"
@@ -313,10 +306,7 @@ async def update_api_config(config: ApiConfigUpdate):
             "ACTIVE_EXCHANGE": settings.ACTIVE_EXCHANGE,
             "BINANCE_API_KEY": settings.BINANCE_API_KEY,
             "BINANCE_API_SECRET": settings.BINANCE_API_SECRET,
-            "BYBIT_API_KEY": settings.BYBIT_API_KEY,
-            "BYBIT_API_SECRET": settings.BYBIT_API_SECRET,
-            "BINANCE_TESTNET": str(settings.BINANCE_TESTNET).lower(),
-            "BYBIT_TESTNET": str(settings.BYBIT_TESTNET).lower()
+            "BINANCE_TESTNET": str(settings.BINANCE_TESTNET).lower()
         }
         
         new_lines = []
@@ -330,7 +320,9 @@ async def update_api_config(config: ApiConfigUpdate):
                     found = True
                     break
             if not found:
-                new_lines.append(line)
+                # Remove old Bybit keys if present
+                if not line.startswith("BYBIT_"):
+                    new_lines.append(line)
                 
         for k in keys:
             if k not in handled:

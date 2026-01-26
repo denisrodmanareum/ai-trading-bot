@@ -24,11 +24,6 @@ class Settings(BaseSettings):
     BINANCE_API_SECRET: str = ""
     BINANCE_TESTNET: bool = True
     
-    # Bybit API
-    BYBIT_API_KEY: str = ""
-    BYBIT_API_SECRET: str = ""
-    BYBIT_TESTNET: bool = True
-    
     # Active Exchange
     ACTIVE_EXCHANGE: str = "BINANCE" # BINANCE or BYBIT
     

@@ -27,16 +27,9 @@ class ExchangeFactory:
         
         if target_exchange == "BINANCE":
             cls._instance = BinanceClient()
-        elif target_exchange == "BYBIT":
-            # Lazy import to avoid issues if Bybit dependencies aren't met
-            try:
-                from trading.bybit_client import BybitClient
-                cls._instance = BybitClient()
-            except ImportError as e:
-                logger.error(f"Failed to load BybitClient: {e}")
-                cls._instance = BinanceClient() # Fallback
         else:
-            logger.warning(f"Unknown exchange: {target_exchange}. Defaulting to BINANCE.")
+            if target_exchange != "BINANCE":
+                logger.warning(f"Unknown exchange: {target_exchange}. Defaulting to BINANCE.")
             cls._instance = BinanceClient()
             
         await cls._instance.initialize()
