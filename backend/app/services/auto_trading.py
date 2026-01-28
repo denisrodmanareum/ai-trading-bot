@@ -941,29 +941,35 @@ class AutoTradingService:
                  
                  reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
                  
-                 # Apply Dynamic Leverage (only if no position and different from current)
-                 try:
-                     current_leverage = position.get('leverage', 5)
-                     position_size = abs(float(position.get('position_amt', 0)))
-                     
-                     # Only try to change leverage if:
-                     # 1. Current leverage is different from desired leverage
-                     # 2. No open position (Binance doesn't allow leverage change with open position)
-                     if current_leverage != leverage and position_size == 0:
-                         result = await self.exchange_client.change_leverage(symbol, leverage)
-                         if result is not None:
-                             logger.info(f"✓ Leverage changed: {current_leverage} -> {leverage}")
-                         else:
-                             logger.debug(f"Leverage change failed, using current: {current_leverage}")
-                             leverage = current_leverage
-                     elif current_leverage != leverage and position_size > 0:
-                         # Position exists, can't change leverage - use current
-                         logger.debug(f"Position exists ({position_size}), using current leverage {current_leverage}")
-                         leverage = current_leverage  # Use existing leverage
-                 except Exception as e:
-                     # Fallback to current leverage on any error
-                     logger.debug(f"Leverage change error ({e}), using current: {current_leverage}")
-                     leverage = current_leverage
+                 # Apply Dynamic Leverage (only in AUTO mode, no position, and different from current)
+                 # 🔧 MANUAL 모드일 때는 사용자 설정값 그대로 사용, AUTO일 때만 동적 조정
+                 if self.strategy_config.leverage_mode == "AUTO":
+                     try:
+                         current_leverage = position.get('leverage', 5)
+                         position_size = abs(float(position.get('position_amt', 0)))
+                         
+                         # Only try to change leverage if:
+                         # 1. Current leverage is different from desired leverage
+                         # 2. No open position (Binance doesn't allow leverage change with open position)
+                         if current_leverage != leverage and position_size == 0:
+                             result = await self.exchange_client.change_leverage(symbol, leverage)
+                             if result is not None:
+                                 logger.info(f"✓ Leverage changed: {current_leverage} -> {leverage}")
+                             else:
+                                 logger.debug(f"Leverage change failed, using current: {current_leverage}")
+                                 leverage = current_leverage
+                         elif current_leverage != leverage and position_size > 0:
+                             # Position exists, can't change leverage - use current
+                             logger.debug(f"Position exists ({position_size}), using current leverage {current_leverage}")
+                             leverage = current_leverage  # Use existing leverage
+                     except Exception as e:
+                         # Fallback to current leverage on any error
+                         logger.debug(f"Leverage change error ({e}), using current: {current_leverage}")
+                         leverage = current_leverage
+                 else:
+                     # MANUAL 모드: 사용자 설정 레버리지 그대로 사용
+                     logger.info(f"✅ Using MANUAL leverage: {leverage}x (no dynamic adjustment)")
+
 
         else:
             # No Rule Signal
