@@ -53,6 +53,13 @@ class Settings(BaseSettings):
                 return ["*"]
             return [x.strip() for x in v.split(",")]
         return v
+
+    @field_validator("BINANCE_API_KEY", "BINANCE_API_SECRET", mode="before")
+    @classmethod
+    def strip_whitespace(cls, v):
+        if isinstance(v, str):
+            return v.strip()
+        return v
     
     class Config:
         env_file = str(ENV_FILE) if ENV_FILE.exists() else ".env"

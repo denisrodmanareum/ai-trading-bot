@@ -287,8 +287,10 @@ async def update_api_config(config: ApiConfigUpdate):
             raise HTTPException(status_code=400, detail="Invalid exchange. Only BINANCE is supported.")
             
         settings.ACTIVE_EXCHANGE = config.active_exchange
-        if config.binance_key: settings.BINANCE_API_KEY = config.binance_key
-        if config.binance_secret: settings.BINANCE_API_SECRET = config.binance_secret
+        if config.binance_key: 
+            settings.BINANCE_API_KEY = config.binance_key.strip()
+        if config.binance_secret: 
+            settings.BINANCE_API_SECRET = config.binance_secret.strip()
         settings.BINANCE_TESTNET = config.testnet
         
         # 2. Update .env file

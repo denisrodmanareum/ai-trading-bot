@@ -18,8 +18,8 @@ class BinanceClient(BaseExchangeClient):
         """Initialize client"""
         try:
             self.client = await AsyncClient.create(
-                api_key=settings.BINANCE_API_KEY,
-                api_secret=settings.BINANCE_API_SECRET,
+                api_key=settings.BINANCE_API_KEY.strip(),
+                api_secret=settings.BINANCE_API_SECRET.strip(),
                 testnet=settings.BINANCE_TESTNET
             )
             
