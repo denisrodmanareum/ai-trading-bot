@@ -838,6 +838,8 @@ class AutoTradingService:
         final_action = 0 # Default HOLD
         leverage = 5
         reason = "Wait"
+        ai_opposes = False
+        ai_agrees = False
 
         if tech_signal:
              # Rule-based Signal Exists
