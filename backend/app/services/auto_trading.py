@@ -847,10 +847,10 @@ class AutoTradingService:
              ai_opposes = (rule_action_id == 1 and ai_action == 2) or (rule_action_id == 2 and ai_action == 1)
              ai_agrees = (rule_action_id == ai_action)
              
-             # 🔧 NEW: Weighted Decision System
+             # 🔧 ENHANCED: Weighted Decision System (Optimized)
              # - 신호 강도 1~2: AI가 반대하면 차단
-             # - 신호 강도 3: AI 신뢰도 50% 이상이고 반대하면 차단
-             # - 신호 강도 4: AI 신뢰도 70% 이상이고 반대하면 차단
+             # - 신호 강도 3: AI 신뢰도 60% 이상이고 반대하면 차단 (50% → 60%)
+             # - 신호 강도 4: AI 신뢰도 75% 이상이고 반대하면 차단 (70% → 75%)
              # - 신호 강도 5: 항상 진입 (매우 강한 신호)
              
              signal_strength = tech_signal.get('strength', 1)
@@ -859,36 +859,57 @@ class AutoTradingService:
                  # Very strong signal - always proceed
                  final_action = rule_action_id
                  reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
-                 logger.info(f"✅ Very Strong Signal (5+), AI filter bypassed")
+                 logger.info(
+                     f"✅ Very Strong Signal (5+), AI filter bypassed | "
+                     f"AI was: {ai_action_name} ({ai_confidence:.1%})"
+                 )
                  
              elif ai_opposes:
                  # AI opposes the signal
                  if signal_strength <= 2:
                      # Weak signal + AI opposition = BLOCK
-                     logger.warning(f"🚫 AI Blocked (Weak Signal): Rule={tech_signal['action']}, AI={ai_action_name} ({ai_confidence:.1%})")
+                     logger.warning(
+                         f"🚫 AI Blocked (Weak Signal): Rule={tech_signal['action']}, "
+                         f"AI={ai_action_name} ({ai_confidence:.1%})"
+                     )
                      final_action = 0
                      reason = "AI_BLOCKED_WEAK"
-                 elif signal_strength == 3 and ai_confidence >= 0.5:
+                 elif signal_strength == 3 and ai_confidence >= 0.6:  # 🔧 50% → 60%
                      # Medium signal + confident AI opposition = BLOCK
-                     logger.warning(f"🚫 AI Blocked (Medium Signal): Rule={tech_signal['action']}, AI={ai_action_name} ({ai_confidence:.1%})")
+                     logger.warning(
+                         f"🚫 AI Blocked (Medium Signal): Rule={tech_signal['action']}, "
+                         f"AI={ai_action_name} ({ai_confidence:.1%})"
+                     )
                      final_action = 0
                      reason = "AI_BLOCKED_MEDIUM"
-                 elif signal_strength == 4 and ai_confidence >= 0.7:
+                 elif signal_strength == 4 and ai_confidence >= 0.75:  # 🔧 70% → 75%
                      # Strong signal + very confident AI opposition = BLOCK
-                     logger.warning(f"🚫 AI Blocked (Strong Signal): Rule={tech_signal['action']}, AI={ai_action_name} ({ai_confidence:.1%})")
+                     logger.warning(
+                         f"🚫 AI Blocked (Strong Signal): Rule={tech_signal['action']}, "
+                         f"AI={ai_action_name} ({ai_confidence:.1%})"
+                     )
                      final_action = 0
                      reason = "AI_BLOCKED_STRONG"
                  else:
                      # Signal strong enough, proceed despite AI
                      final_action = rule_action_id
                      reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
-                     logger.info(f"⚠️ Proceeding despite AI opposition (Signal:{signal_strength}, AI Conf:{ai_confidence:.1%})")
+                     logger.info(
+                         f"⚠️ Proceeding despite AI opposition | "
+                         f"Signal:{signal_strength}, AI:{ai_action_name}({ai_confidence:.1%})"
+                     )
              
-             elif ai_agrees and ai_confidence >= 0.6:
+             elif ai_agrees and ai_confidence >= 0.75:  # 🔧 60% → 75% (high confidence boost)
                  # AI agrees with high confidence - boost confidence
                  final_action = rule_action_id
+                 reason = f"Rule+AI_HighConf_{tech_signal.get('reason', 'Signal')}"
+                 logger.info(f"✅ AI High Confidence Agreement! ({ai_confidence:.1%})")
+             
+             elif ai_agrees and ai_confidence >= 0.6:  # Medium confidence agreement
+                 # AI agrees with medium confidence
+                 final_action = rule_action_id
                  reason = f"Rule+AI_{tech_signal.get('reason', 'Signal')}"
-                 logger.info(f"✅ AI Agreement Boost! (Confidence: {ai_confidence:.1%})")
+                 logger.info(f"✅ AI Agreement (Confidence: {ai_confidence:.1%})")
              
              else:
                  # Normal case - follow rule
@@ -941,34 +962,20 @@ class AutoTradingService:
                  
                  reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
                  
-                 # Apply Dynamic Leverage (only in AUTO mode, no position, and different from current)
-                 # 🔧 MANUAL 모드일 때는 사용자 설정값 그대로 사용, AUTO일 때만 동적 조정
-                 if self.strategy_config.leverage_mode == "AUTO":
-                     try:
-                         current_leverage = position.get('leverage', 5)
-                         position_size = abs(float(position.get('position_amt', 0)))
-                         
-                         # Only try to change leverage if:
-                         # 1. Current leverage is different from desired leverage
-                         # 2. No open position (Binance doesn't allow leverage change with open position)
-                         if current_leverage != leverage and position_size == 0:
-                             result = await self.exchange_client.change_leverage(symbol, leverage)
-                             if result is not None:
-                                 logger.info(f"✓ Leverage changed: {current_leverage} -> {leverage}")
-                             else:
-                                 logger.debug(f"Leverage change failed, using current: {current_leverage}")
-                                 leverage = current_leverage
-                         elif current_leverage != leverage and position_size > 0:
-                             # Position exists, can't change leverage - use current
-                             logger.debug(f"Position exists ({position_size}), using current leverage {current_leverage}")
-                             leverage = current_leverage  # Use existing leverage
-                     except Exception as e:
-                         # Fallback to current leverage on any error
-                         logger.debug(f"Leverage change error ({e}), using current: {current_leverage}")
-                         leverage = current_leverage
-                 else:
-                     # MANUAL 모드: 사용자 설정 레버리지 그대로 사용
-                     logger.info(f"✅ Using MANUAL leverage: {leverage}x (no dynamic adjustment)")
+                 # Apply Leverage (only if no position and different from current)
+                 try:
+                     current_leverage = int(position.get('leverage', 5))
+                     position_size = abs(float(position.get('position_amt', 0)))
+                     
+                     if current_leverage != leverage and position_size == 0:
+                         logger.info(f"⚙️ Applying leverage for {symbol}: {current_leverage}x -> {leverage}x ({self.strategy_config.leverage_mode} mode)")
+                         await self.exchange_client.change_leverage(symbol, leverage)
+                     elif current_leverage != leverage and position_size > 0:
+                         logger.debug(f"Position active for {symbol}, using current leverage {current_leverage}x (Wanted: {leverage}x)")
+                         leverage = current_leverage # Cannot change with position
+                 except Exception as e:
+                     logger.warning(f"Failed to sync leverage for {symbol}: {e}")
+                     leverage = int(position.get('leverage', 5))
 
 
         else:
@@ -997,7 +1004,26 @@ class AutoTradingService:
                 reason = "No_Signal"
         
         final_action_str = ["HOLD", "LONG", "SHORT", "CLOSE"][final_action]
-        logger.info(f"🎯 DECISION {symbol} - AI: {ai_action_name} | Rule: {tech_signal['action'] if tech_signal else 'None'} -> Final: {final_action_str} ({reason})")
+        
+        # 🆕 AI Filter Summary Log
+        ai_impact = "NEUTRAL"
+        if reason.startswith("AI_BLOCKED"):
+            ai_impact = "BLOCKED"
+        elif "Rule+AI_HighConf" in reason:
+            ai_impact = "HIGH_BOOST"
+        elif "Rule+AI" in reason:
+            ai_impact = "BOOST"
+        elif ai_opposes and final_action != 0:
+            ai_impact = "OPPOSED_IGNORED"
+        
+        logger.info(
+            f"🧠 AI Filter: Tech={tech_signal['action'] if tech_signal else 'None'}(S:{signal_strength}), "
+            f"AI={ai_action_name}({ai_confidence:.1%}), Impact={ai_impact}"
+        )
+        logger.info(
+            f"🎯 DECISION {symbol} - AI: {ai_action_name} | Rule: {tech_signal['action'] if tech_signal else 'None'} -> "
+            f"Final: {final_action_str} ({reason})"
+        )
         
         # 신호 강도 추출
         signal_strength = tech_signal.get('strength', 0) if tech_signal else 0

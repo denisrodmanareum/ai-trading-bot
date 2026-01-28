@@ -67,6 +67,7 @@ function AIHub() {
     fetchLearningProgress();
     fetchWeeklySummary();
     fetchAvailableSymbols();
+    fetchCoinSelection();
   }, []);
 
   // AI Control Functions
@@ -546,7 +547,7 @@ function AIHub() {
   // Coin Selection Functions
   const fetchCoinSelection = async () => {
     try {
-      const res = await fetch('/api/coins/selection');
+      const res = await fetch('/api/trading/coins/selected');
       if (res.ok) {
         const data = await res.json();
         setCoinSelection(data);
@@ -556,73 +557,10 @@ function AIHub() {
     }
   };
 
-  const fetchCoinCandidates = async () => {
-    try {
-      const res = await fetch('/api/coins/candidates');
-      if (res.ok) {
-        const data = await res.json();
-        setCoinCandidates(data.candidates || []);
-      }
-    } catch (e) {
-      console.error('Failed to fetch candidates:', e);
-    }
-  };
-
-  const fetchCoinStats = async () => {
-    try {
-      const res = await fetch('/api/coins/stats');
-      if (res.ok) {
-        const data = await res.json();
-        setCoinStats(data.stats);
-      }
-    } catch (e) {
-      console.error('Failed to fetch stats:', e);
-    }
-  };
-
-  const handleRebalance = async () => {
-    setRebalancing(true);
-    try {
-      const res = await fetch('/api/coins/rebalance', { method: 'POST' });
-      if (res.ok) {
-        await fetchCoinSelection();
-        await fetchCoinStats();
-        await fetchAvailableSymbols(); // 학습 가능한 코인 목록 업데이트
-        showNotification('success', 'Coin selection rebalanced successfully!');
-      }
-    } catch (e) {
-      console.error('Failed to rebalance:', e);
-      showNotification('error', 'Failed to rebalance coins');
-    } finally {
-      setRebalancing(false);
-    }
-  };
-
-  const updateCoinConfig = async (newConfig) => {
-    try {
-      const res = await fetch('/api/coins/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newConfig)
-      });
-      if (res.ok) {
-        await fetchCoinSelection();
-        await fetchCoinStats();
-        await fetchAvailableSymbols(); // 학습 가능한 코인 목록 업데이트
-        showNotification('success', 'Configuration updated successfully!');
-      }
-    } catch (e) {
-      console.error('Failed to update config:', e);
-      showNotification('error', 'Failed to update configuration');
-    }
-  };
-
   // Load coin selection data when tab is active
   useEffect(() => {
     if (activeTab === 'coins') {
       fetchCoinSelection();
-      fetchCoinCandidates();
-      fetchCoinStats();
     }
     if (activeTab === 'control') {
       fetchAvailableSymbols(); // control 탭에서 최신 심볼 목록 가져오기
@@ -630,7 +568,7 @@ function AIHub() {
   }, [activeTab]);
 
   return (
-    <div style={{ padding: '2rem', maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
       {/* Add animation styles */}
       <style>{`
         @keyframes slideIn {
@@ -1367,454 +1305,90 @@ function AIHub() {
         {/* Coin Selection Tab */}
         {activeTab === 'coins' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-            {/* Current Selection Stats */}
-            {coinStats && (
-              <div style={{
-                background: '#0a0a0a',
-                border: '1px solid #222',
-                borderRadius: '4px',
-                padding: '1.5rem'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                  <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#fff' }}>
-                    {coinSelection.config?.mode === 'BTC_ONLY' ? '₿ Bitcoin Only 모드' : '🪙 현재 선택된 코인 (하이브리드 모드)'}
-                  </h3>
-                  <button
-                    onClick={handleRebalance}
-                    disabled={rebalancing}
-                    style={{
-                      padding: '0.5rem 1rem',
-                      background: rebalancing ? '#333' : '#00b07c',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: '2px',
-                      cursor: rebalancing ? 'not-allowed' : 'pointer',
-                      fontSize: '0.8rem',
-                      fontWeight: '800'
-                    }}
-                  >
-                    {rebalancing ? '⏳ 재선별 중...' : '🔄 지금 재선별'}
-                  </button>
-                </div>
-
-                {/* Stats Grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
-                  <div style={{ padding: '1rem', background: '#000', borderRadius: '2px' }}>
-                    <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '0.5rem' }}>총 코인 수</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#00b07c' }}>{coinStats.total_coins}</div>
-                  </div>
-                  <div style={{ padding: '1rem', background: '#000', borderRadius: '2px' }}>
-                    <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '0.5rem' }}>코어 코인</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#fff' }}>{coinStats.core_coins}</div>
-                  </div>
-                  <div style={{ padding: '1rem', background: '#000', borderRadius: '2px' }}>
-                    <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '0.5rem' }}>자동 선택</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#ffd93d' }}>{coinStats.auto_coins}</div>
-                  </div>
-                  <div style={{ padding: '1rem', background: '#000', borderRadius: '2px' }}>
-                    <div style={{ fontSize: '0.7rem', color: '#666', marginBottom: '0.5rem' }}>평균 점수</div>
-                    <div style={{ fontSize: '1.5rem', fontWeight: '900', color: '#00b07c' }}>{coinStats.avg_score}</div>
-                  </div>
-                </div>
-
-                {/* Selected Coins List */}
-                <div style={{ marginBottom: '1rem' }}>
-                  <div style={{ fontSize: '0.8rem', fontWeight: '800', color: '#666', marginBottom: '0.5rem', textTransform: 'uppercase' }}>
-                    활성 트레이딩 코인
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                    {coinStats.coins_list?.map(coin => {
-                      const score = coinSelection.scores[coin] || 0;
-                      const isCore = coinSelection.config?.core_coins?.some(c => coin.startsWith(c));
-                      return (
-                        <div
-                          key={coin}
-                          style={{
-                            padding: '0.5rem 1rem',
-                            background: isCore ? '#1a1a2e' : '#000',
-                            border: isCore ? '1px solid #00b07c' : '1px solid #333',
-                            borderRadius: '2px',
-                            fontSize: '0.8rem',
-                            fontWeight: '800',
-                            color: '#fff',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '0.5rem'
-                          }}
-                        >
-                          {isCore && <span style={{ color: '#00b07c' }}>⭐</span>}
-                          <span>{coin.replace('USDT', '')}</span>
-                          <span style={{ fontSize: '0.7rem', color: '#666' }}>({score.toFixed(1)})</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Last Rebalance Info */}
-                {coinSelection.last_rebalance && (
-                  <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '1rem' }}>
-                    마지막 재선별: {new Date(coinSelection.last_rebalance).toLocaleString('ko-KR')}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 🆕 Trading Mode Selection */}
             <div style={{
               background: '#0a0a0a',
               border: '1px solid #222',
               borderRadius: '4px',
-              padding: '1.5rem',
-              marginBottom: '1rem'
+              padding: '2rem',
+              textAlign: 'center'
             }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: '800', marginBottom: '1rem', color: '#fff' }}>
-                🎯 트레이딩 모드 선택
+              <div style={{ fontSize: '3rem', marginBottom: '1.5rem' }}>🎯</div>
+              <h3 style={{ fontSize: '1.2rem', fontWeight: '800', color: '#fff', marginBottom: '1rem' }}>
+                Active Trading Coins
               </h3>
+              <p style={{ color: '#666', fontSize: '0.9rem', maxWidth: '500px', margin: '0 auto 2rem' }}>
+                현재 AI가 모니터링하고 거래 중인 코인 목록입니다.
+                코인 변경은 [Settings &gt; Risk Management] 탭에서 가능합니다.
+              </p>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-                {/* BTC Only Mode */}
-                <button
-                  onClick={() => updateCoinConfig({ mode: 'BTC_ONLY' })}
-                  style={{
-                    padding: '1.5rem',
-                    background: coinSelection.config?.mode === 'BTC_ONLY'
-                      ? 'linear-gradient(135deg, #f0b90b, #f8d12f)'
-                      : '#111',
-                    border: coinSelection.config?.mode === 'BTC_ONLY'
-                      ? '2px solid #f0b90b'
-                      : '1px solid #333',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s',
-                    textAlign: 'left'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (coinSelection.config?.mode !== 'BTC_ONLY') {
-                      e.currentTarget.style.borderColor = '#f0b90b';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (coinSelection.config?.mode !== 'BTC_ONLY') {
-                      e.currentTarget.style.borderColor = '#333';
-                    }
-                  }}
-                >
-                  <div style={{
-                    fontSize: '2rem',
-                    marginBottom: '0.5rem',
-                    color: coinSelection.config?.mode === 'BTC_ONLY' ? '#000' : '#f0b90b'
-                  }}>
-                    ₿
-                  </div>
-                  <div style={{
-                    fontSize: '1rem',
-                    fontWeight: '900',
-                    marginBottom: '0.5rem',
-                    color: coinSelection.config?.mode === 'BTC_ONLY' ? '#000' : '#fff'
-                  }}>
-                    BTC ONLY
-                  </div>
-                  <div style={{
-                    fontSize: '0.75rem',
-                    color: coinSelection.config?.mode === 'BTC_ONLY' ? 'rgba(0,0,0,0.7)' : '#888',
-                    lineHeight: '1.6'
-                  }}>
-                    비트코인에만 올인<br />
-                    단일 코인 집중 전략<br />
-                    높은 유동성 & 안정성
-                  </div>
-                  {coinSelection.config?.mode === 'BTC_ONLY' && (
-                    <div style={{
-                      marginTop: '0.75rem',
-                      padding: '0.5rem',
-                      background: 'rgba(0,0,0,0.2)',
-                      borderRadius: '3px',
-                      fontSize: '0.7rem',
-                      fontWeight: '800',
-                      color: '#000'
-                    }}>
-                      ✅ 현재 활성화
-                    </div>
-                  )}
-                </button>
-
-                {/* Hybrid Mode */}
-                <button
-                  onClick={() => updateCoinConfig({ mode: 'HYBRID' })}
-                  style={{
-                    padding: '1.5rem',
-                    background: coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode
-                      ? 'linear-gradient(135deg, #00b07c, #00d98e)'
-                      : '#111',
-                    border: coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode
-                      ? '2px solid #00b07c'
-                      : '1px solid #333',
-                    borderRadius: '4px',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s',
-                    textAlign: 'left'
-                  }}
-                  onMouseEnter={(e) => {
-                    if (coinSelection.config?.mode !== 'HYBRID' && coinSelection.config?.mode) {
-                      e.currentTarget.style.borderColor = '#00b07c';
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (coinSelection.config?.mode !== 'HYBRID' && coinSelection.config?.mode) {
-                      e.currentTarget.style.borderColor = '#333';
-                    }
-                  }}
-                >
-                  <div style={{
-                    fontSize: '2rem',
-                    marginBottom: '0.5rem',
-                    color: coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode ? '#000' : '#00b07c'
-                  }}>
-                    🪙
-                  </div>
-                  <div style={{
-                    fontSize: '1rem',
-                    fontWeight: '900',
-                    marginBottom: '0.5rem',
-                    color: coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode ? '#000' : '#fff'
-                  }}>
-                    HYBRID
-                  </div>
-                  <div style={{
-                    fontSize: '0.75rem',
-                    color: coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode ? 'rgba(0,0,0,0.7)' : '#888',
-                    lineHeight: '1.6'
-                  }}>
-                    코어 코인 + 알트코인<br />
-                    AI 자동 선택 전략<br />
-                    분산 투자 & 기회 포착
-                  </div>
-                  {(coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode) && (
-                    <div style={{
-                      marginTop: '0.75rem',
-                      padding: '0.5rem',
-                      background: 'rgba(0,0,0,0.2)',
-                      borderRadius: '3px',
-                      fontSize: '0.7rem',
-                      fontWeight: '800',
-                      color: '#000'
-                    }}>
-                      ✅ 현재 활성화
-                    </div>
-                  )}
-                </button>
-              </div>
-
-              {/* Mode Description */}
               <div style={{
-                marginTop: '1rem',
-                padding: '1rem',
-                background: coinSelection.config?.mode === 'BTC_ONLY'
-                  ? 'rgba(240, 185, 11, 0.1)'
-                  : 'rgba(0, 176, 124, 0.1)',
-                border: `1px solid ${coinSelection.config?.mode === 'BTC_ONLY' ? 'rgba(240, 185, 11, 0.3)' : 'rgba(0, 176, 124, 0.3)'}`,
-                borderRadius: '4px'
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '1rem',
+                justifyContent: 'center',
+                marginBottom: '2rem'
               }}>
-                <div style={{
-                  fontSize: '0.75rem',
-                  fontWeight: '800',
-                  color: coinSelection.config?.mode === 'BTC_ONLY' ? '#f0b90b' : '#00b07c',
-                  marginBottom: '0.5rem'
-                }}>
-                  {coinSelection.config?.mode === 'BTC_ONLY' ? '₿ BTC Only 모드 활성화' : '🪙 하이브리드 모드 활성화'}
-                </div>
-                <div style={{ fontSize: '0.7rem', color: '#bbb', lineHeight: '1.6' }}>
-                  {coinSelection.config?.mode === 'BTC_ONLY'
-                    ? 'BTCUSDT만 거래하며, 모든 자본을 비트코인에 집중합니다. 가장 높은 유동성과 안정성을 제공하며, 시장 대표 지표를 따릅니다.'
-                    : '코어 코인(BTC, ETH, SOL, BNB)과 AI가 선택한 상위 알트코인을 함께 거래합니다. 안정성과 기회 포착을 동시에 추구합니다.'
-                  }
-                </div>
+                {(coinSelection.selected_coins || []).map(coin => (
+                  <div
+                    key={coin}
+                    style={{
+                      padding: '1rem 2rem',
+                      background: 'rgba(240, 185, 11, 0.1)',
+                      border: '1px solid #f0b90b',
+                      borderRadius: '4px',
+                      fontSize: '1.1rem',
+                      fontWeight: '900',
+                      color: '#f0b90b',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.75rem',
+                      boxShadow: '0 4px 12px rgba(240, 185, 11, 0.1)'
+                    }}
+                  >
+                    <span>{coin.replace('USDT', '')}</span>
+                  </div>
+                ))}
               </div>
+
+              <button
+                onClick={() => {
+                  // This is a bit of a hacky way to switch tabs in another page, 
+                  // but usually users would just go to settings.
+                  window.location.href = '/settings';
+                }}
+                style={{
+                  padding: '0.75rem 2rem',
+                  background: '#222',
+                  color: '#fff',
+                  border: '1px solid #444',
+                  borderRadius: '2px',
+                  fontWeight: '800',
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#222'}
+              >
+                Go to Settings to Manage Coins
+              </button>
             </div>
 
-            {/* Configuration Panel (HYBRID Mode only) */}
-            {(coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode) && (
-              <div style={{
-                background: '#0a0a0a',
-                border: '1px solid #222',
-                borderRadius: '4px',
-                padding: '1.5rem'
-              }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: '800', marginBottom: '1rem', color: '#fff' }}>
-                  ⚙️ 선택 설정 (하이브리드 모드)
-                </h3>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-                  {/* Core Coins */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#666', marginBottom: '0.5rem' }}>
-                      코어 코인 (항상 포함)
-                    </label>
-                    <div style={{ fontSize: '0.8rem', color: '#fff' }}>
-                      {coinSelection.config?.core_coins?.join(', ') || 'BTC, ETH, SOL, BNB'}
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.25rem' }}>
-                      코어 코인은 최대 10배, 나머지는 최대 5배 레버리지
-                    </div>
-                  </div>
-
-                  {/* Max Altcoins */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#666', marginBottom: '0.5rem' }}>
-                      최대 자동 알트코인
-                    </label>
-                    <div style={{ fontSize: '0.8rem', color: '#fff' }}>
-                      {coinSelection.config?.max_altcoins || 3} coins
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.25rem' }}>
-                      AI가 자동으로 상위 성과 코인 선택
-                    </div>
-                  </div>
-
-                  {/* Rebalance Interval */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#666', marginBottom: '0.5rem' }}>
-                      재선별 주기
-                    </label>
-                    <div style={{ fontSize: '0.8rem', color: '#fff' }}>
-                      Every {coinSelection.config?.rebalance_interval_hours || 1} hour(s)
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.25rem' }}>
-                      자동 선택 업데이트
-                    </div>
-                  </div>
-
-                  {/* Max Total */}
-                  <div>
-                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: '800', color: '#666', marginBottom: '0.5rem' }}>
-                      최대 총 코인 수
-                    </label>
-                    <div style={{ fontSize: '0.8rem', color: '#fff' }}>
-                      {coinSelection.config?.max_total || 7} coins
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '0.25rem' }}>
-                      최대 동시 거래 수
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Top Candidates (HYBRID Mode only) */}
-            {coinCandidates.length > 0 && (
-              <div style={{
-                background: '#0a0a0a',
-                border: '1px solid #222',
-                borderRadius: '4px',
-                padding: '1.5rem'
-              }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: '800', marginBottom: '1rem', color: '#fff' }}>
-                  🏆 상위 코인 후보 (AI 점수 기준)
-                </h3>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
-                  {coinCandidates.slice(0, 9).map((candidate, idx) => (
-                    <div
-                      key={candidate.symbol}
-                      style={{
-                        padding: '1rem',
-                        background: '#000',
-                        border: '1px solid #222',
-                        borderRadius: '2px'
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
-                        <div style={{ fontSize: '0.9rem', fontWeight: '900', color: '#fff' }}>
-                          #{idx + 1} {candidate.base_symbol}
-                        </div>
-                        <div style={{
-                          fontSize: '0.8rem',
-                          fontWeight: '800',
-                          color: candidate.score > 80 ? '#00b07c' : candidate.score > 60 ? '#ffd93d' : '#666'
-                        }}>
-                          {candidate.score.toFixed(1)}
-                        </div>
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', fontSize: '0.7rem' }}>
-                        <div>
-                          <div style={{ color: '#666' }}>24h Change</div>
-                          <div style={{
-                            color: candidate.metrics.price_change_24h > 0 ? '#00b07c' : '#ff5b5b',
-                            fontWeight: '800'
-                          }}>
-                            {candidate.metrics.price_change_24h.toFixed(2)}%
-                          </div>
-                        </div>
-                        <div>
-                          <div style={{ color: '#666' }}>Volume</div>
-                          <div style={{ color: '#fff', fontWeight: '800' }}>
-                            ${(candidate.metrics.volume_24h / 1_000_000).toFixed(0)}M
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div style={{ fontSize: '0.7rem', color: '#666', marginTop: '1rem' }}>
-                  * 점수는 거래량, 변동성, 모멘텀, 유동성을 기반으로 계산됩니다
-                </div>
-              </div>
-            )}
-
-            {/* Selection Criteria Info (HYBRID Mode only) */}
-            {(coinSelection.config?.mode === 'HYBRID' || !coinSelection.config?.mode) && (
-              <div style={{
-                background: '#0a0a0a',
-                border: '1px solid #222',
-                borderRadius: '4px',
-                padding: '1.5rem'
-              }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: '800', marginBottom: '1rem', color: '#fff' }}>
-                  🎯 자동 선택 기준
-                </h3>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', fontSize: '0.8rem' }}>
-                  <div>
-                    <div style={{ fontWeight: '800', color: '#00b07c', marginBottom: '0.5rem' }}>✅ 최소 요구사항</div>
-                    <ul style={{ margin: 0, paddingLeft: '1.5rem', color: '#bbb', lineHeight: '1.8' }}>
-                      <li>시가총액: $1B 이상</li>
-                      <li>24시간 거래량: $100M 이상</li>
-                      <li>바이낸스 선물 거래 가능</li>
-                      <li>가격 변동: -50% ~ +100%</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: '800', color: '#ffd93d', marginBottom: '0.5rem' }}>📊 점수 계산 요소</div>
-                    <ul style={{ margin: 0, paddingLeft: '1.5rem', color: '#bbb', lineHeight: '1.8' }}>
-                      <li>거래량 (30%): 높을수록 좋음</li>
-                      <li>변동성 (30%): 적당한 변동성 선호</li>
-                      <li>모멘텀 (20%): 긍정적 모멘텀 선호</li>
-                      <li>유동성 (20%): 상위 100개 코인</li>
-                    </ul>
-                  </div>
-                </div>
-
-                <div style={{
-                  marginTop: '1rem',
-                  padding: '1rem',
-                  background: 'rgba(0, 176, 124, 0.1)',
-                  border: '1px solid rgba(0, 176, 124, 0.3)',
-                  borderRadius: '2px',
-                  fontSize: '0.75rem',
-                  color: '#bbb',
-                  lineHeight: '1.6'
-                }}>
-                  <div style={{ fontWeight: '800', color: '#00b07c', marginBottom: '0.5rem' }}>
-                    💡 하이브리드 모드 작동 방식:
-                  </div>
-                  코어 코인(BTC, ETH, SOL, BNB)은 안정성을 제공하며 항상 거래됩니다(최대 10배 레버리지).
-                  AI는 시장 상황에 따라 매시간 최상위 알트코인을 자동으로 선택하여(최대 5배 레버리지),
-                  높은 거래량과 적당한 변동성을 가진 기회를 최적화합니다. 이러한 균형 잡힌 접근 방식은 리스크를 관리하면서 수익을 극대화합니다.
-                </div>
-              </div>
-            )}
+            <div style={{
+              background: 'rgba(0, 176, 124, 0.05)',
+              border: '1px solid rgba(0, 176, 124, 0.2)',
+              borderRadius: '4px',
+              padding: '1.5rem'
+            }}>
+              <h4 style={{ color: '#00b07c', fontWeight: '800', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                💡 Tip: 다중 코인 거래
+              </h4>
+              <p style={{ color: '#888', fontSize: '0.8rem', lineHeight: '1.6' }}>
+                AI는 선택된 모든 코인을 동시에 실시간 모니터링합니다.
+                각 코인별로 독립적인 신호가 발생하며, 리스크 관리 설정에 따라 동시 포지션 진입이 제한될 수 있습니다.
+                최대 5개까지 선택하는 것을 권장합니다.
+              </p>
+            </div>
           </div>
         )}
       </div>

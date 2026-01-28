@@ -394,6 +394,41 @@ async def update_strategy_config(config: StrategyConfigRequest):
         "manual_leverage": s_config.manual_leverage
     }}
 
+# --- COIN SELECTION ENDPOINTS ---
+
+@router.get("/coins/selected")
+async def get_selected_coins():
+    """Get currently selected trading coins"""
+    from app.services.coin_selector import coin_selector
+    
+    try:
+        status = coin_selector.get_status()
+        return status
+    except Exception as e:
+        logger.error(f"Failed to get selected coins: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+class CoinSelectionRequest(BaseModel):
+    coins: list[str]  # ['BTCUSDT', 'ETHUSDT', ...]
+
+@router.post("/coins/select")
+async def select_trading_coins(request: CoinSelectionRequest):
+    """Set selected trading coins"""
+    from app.services.coin_selector import coin_selector
+    
+    try:
+        coin_selector.set_selected_coins(request.coins)
+        return {
+            "success": True,
+            "selected_coins": coin_selector.selected_coins,
+            "count": len(coin_selector.selected_coins)
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to set selected coins: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # --- MANUAL TRADE MANAGEMENT ENDPOINTS ---
 
 @router.post("/sync")

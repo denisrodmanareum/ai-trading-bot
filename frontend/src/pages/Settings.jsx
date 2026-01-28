@@ -48,12 +48,30 @@ function Settings() {
 
   const [saving, setSaving] = useState(false);
 
+  // Coin Selection States
+  const [selectedCoins, setSelectedCoins] = useState(['BTCUSDT', 'ETHUSDT']);
+  const [maxCoins, setMaxCoins] = useState(5);
+
+  const AVAILABLE_COINS = [
+    { symbol: 'BTCUSDT', name: 'Bitcoin', emoji: '₿' },
+    { symbol: 'ETHUSDT', name: 'Ethereum', emoji: 'Ξ' },
+    { symbol: 'BNBUSDT', name: 'BNB', emoji: '⬡' },
+    { symbol: 'SOLUSDT', name: 'Solana', emoji: '◎' },
+    { symbol: 'XRPUSDT', name: 'Ripple', emoji: 'X' },
+    { symbol: 'ADAUSDT', name: 'Cardano', emoji: '₳' },
+    { symbol: 'DOGEUSDT', name: 'Dogecoin', emoji: 'Ð' },
+    { symbol: 'DOTUSDT', name: 'Polkadot', emoji: '●' },
+    { symbol: 'MATICUSDT', name: 'Polygon', emoji: '⬢' },
+    { symbol: 'AVAXUSDT', name: 'Avalanche', emoji: '▲' },
+  ];
+
   useEffect(() => {
     fetchRiskStatus();
     fetchStrategyConfig();
     fetchNotificationSettings();
     fetchTelegramSettings();
     fetchApiConfig();
+    fetchSelectedCoins();
   }, []);
 
   const fetchRiskStatus = async () => {
@@ -93,6 +111,61 @@ function Settings() {
       }
     } catch (e) {
       console.error(e);
+    }
+  };
+
+
+  const fetchSelectedCoins = async () => {
+    try {
+      const res = await fetch('/api/trading/coins/selected');
+      if (res.ok) {
+        const data = await res.json();
+        setSelectedCoins(data.selected_coins || ['BTCUSDT', 'ETHUSDT']);
+        setMaxCoins(data.max_coins || 5);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const toggleCoin = (symbol) => {
+    if (selectedCoins.includes(symbol)) {
+      // Remove coin
+      if (selectedCoins.length > 1) {
+        setSelectedCoins(selectedCoins.filter(c => c !== symbol));
+      } else {
+        alert('최소 1개 이상의 코인을 선택해야 합니다');
+      }
+    } else {
+      // Add coin
+      if (selectedCoins.length < maxCoins) {
+        setSelectedCoins([...selectedCoins, symbol]);
+      } else {
+        alert(`최대 ${maxCoins}개까지 선택 가능합니다`);
+      }
+    }
+  };
+
+  const applyCoins = async () => {
+    try {
+      setSaving(true);
+      const res = await fetch('/api/trading/coins/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coins: selectedCoins })
+      });
+
+      if (res.ok) {
+        alert('✅ 코인 선택이 저장되었습니다');
+      } else {
+        const error = await res.json();
+        alert(`Error: ${error.detail}`);
+      }
+    } catch (e) {
+      console.error(e);
+      alert('Failed to save coin selection');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -470,6 +543,89 @@ function Settings() {
                 >
                   {saving ? 'Saving...' : 'Save Risk Settings'}
                 </button>
+              </div>
+            </div>
+
+            {/* Coin Selection Configuration */}
+            <div style={{
+              background: '#0a0a0a',
+              border: '1px solid #222',
+              borderRadius: '4px',
+              padding: '1.5rem'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: '800', color: '#fff', marginBottom: '0.5rem' }}>
+                    Trading Coin Selection
+                  </h3>
+                  <p style={{ fontSize: '0.8rem', color: '#666' }}>
+                    AI가 모니터링하고 거래할 코인을 선택하세요 (최대 {maxCoins}개)
+                  </p>
+                </div>
+                <button
+                  onClick={applyCoins}
+                  disabled={saving}
+                  style={{
+                    padding: '0.6rem 1.2rem',
+                    background: '#f0b90b',
+                    color: '#000',
+                    border: 'none',
+                    borderRadius: '2px',
+                    fontWeight: '900',
+                    fontSize: '0.8rem',
+                    cursor: 'pointer',
+                    textTransform: 'uppercase'
+                  }}
+                >
+                  {saving ? 'Updating...' : 'Apply Selection'}
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem' }}>
+                {AVAILABLE_COINS.map(coin => {
+                  const isSelected = selectedCoins.includes(coin.symbol);
+                  return (
+                    <div
+                      key={coin.symbol}
+                      onClick={() => toggleCoin(coin.symbol)}
+                      style={{
+                        padding: '1rem',
+                        background: isSelected ? 'rgba(240, 185, 11, 0.1)' : '#000',
+                        border: isSelected ? '1px solid #f0b90b' : '1px solid #222',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <span style={{ fontSize: '1.2rem' }}>{coin.emoji}</span>
+                        <div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: '800', color: isSelected ? '#f0b90b' : '#fff' }}>
+                            {coin.symbol.replace('USDT', '')}
+                          </div>
+                          <div style={{ fontSize: '0.65rem', color: '#666' }}>{coin.name}</div>
+                        </div>
+                      </div>
+                      <div style={{
+                        width: '18px',
+                        height: '18px',
+                        borderRadius: '2px',
+                        border: isSelected ? 'none' : '1px solid #444',
+                        background: isSelected ? '#f0b90b' : 'transparent',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#000',
+                        fontSize: '12px'
+                      }}>
+                        {isSelected && '✓'}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
