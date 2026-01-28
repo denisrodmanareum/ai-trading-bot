@@ -914,9 +914,10 @@ class AutoTradingService:
                  reason = f"Rule+AI_{tech_signal.get('reason', 'Signal')}"
                  logger.info(f"✅ AI Agreement (Confidence: {ai_confidence:.1%})")
              
-                # Normal case - follow rule
-                final_action = rule_action_id
-                reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
+             else:
+                 # Normal case - follow rule
+                 final_action = rule_action_id
+                 reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
 
 
         else:
