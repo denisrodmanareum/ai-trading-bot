@@ -11,7 +11,19 @@ from pathlib import Path
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 # config.py is in backend/app/core/ so we go up 3 levels to reach backend/ and 4 to reach root
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
-ENV_FILE = BASE_DIR / ".env"
+BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Search for .env in root and backend folders
+DOTENV_ROOT = BASE_DIR / ".env"
+DOTENV_BACKEND = BACKEND_DIR / ".env"
+
+if DOTENV_BACKEND.exists():
+    ENV_FILE = DOTENV_BACKEND
+elif DOTENV_ROOT.exists():
+    ENV_FILE = DOTENV_ROOT
+else:
+    # Use standard default but allow pydantic to search
+    ENV_FILE = DOTENV_ROOT
 
 class Settings(BaseSettings):
     """Application settings"""

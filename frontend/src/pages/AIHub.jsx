@@ -116,19 +116,18 @@ function AIHub() {
 
   const fetchAvailableSymbols = async () => {
     try {
-      // 하이브리드 모드에서 선택된 코인들만 가져오기
-      const res = await fetch('/api/coins/selection');
+      // Get manually selected coins from trading service
+      const res = await fetch('/api/trading/coins/selected');
       if (res.ok) {
         const data = await res.json();
         const symbols = data.selected_coins || [];
-        // USDT 페어로 변환 (예: BTC -> BTCUSDT)
+        // Ensure symbols are in USDT format
         const symbolsWithUSDT = symbols.map(coin => coin.includes('USDT') ? coin : `${coin}USDT`);
         setAvailableSymbols(symbolsWithUSDT);
       }
     } catch (e) {
-      console.error(e);
-      // 실패시 기본 코어 코인들 표시
-      setAvailableSymbols(['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT']);
+      console.error('Failed to fetch available symbols:', e);
+      setAvailableSymbols(['BTCUSDT', 'ETHUSDT']);
     }
   };
 
