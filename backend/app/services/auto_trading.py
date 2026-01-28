@@ -947,9 +947,10 @@ class AutoTradingService:
         
         # 6. 🔧 CENTRALIZED LEVERAGE LOGIC (Always respected)
         if final_action in [1, 2]: # Entering LONG or SHORT
+            logger.info(f"🔄 Leverage check for {symbol}: Mode={self.strategy_config.leverage_mode}, ManualVal={self.strategy_config.manual_leverage}")
             if self.strategy_config.leverage_mode == "MANUAL":
                 leverage = self.strategy_config.manual_leverage
-                logger.debug(f"Using MANUAL leverage: {leverage}x for {symbol}")
+                logger.info(f"⚙️ MANUAL Mode: Target Leverage = {leverage}x")
             else:
                 # Dynamic Logic for AUTO mode
                 base_leverage = tech_signal.get('leverage', 5) if tech_signal else 5
@@ -967,20 +968,25 @@ class AutoTradingService:
                         market_volatility=market_volatility,
                         is_core=is_core
                     )
+                    logger.info(f"⚙️ AUTO Mode: calculated dynamic leverage = {leverage}x")
                 except Exception as e:
                     logger.warning(f"Dynamic leverage calculation failed: {e}, using fallback regime adjustment")
                     leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime, symbol)
             
             # 7. Apply Leverage to Exchange
             try:
-                current_leverage = int(position.get('leverage', 5))
+                current_leverage = int(position.get('leverage', 0)) # Use 0 to force sync if not found
                 position_size = abs(float(position.get('position_amt', 0)))
                 
+                logger.info(f"🔎 Current Exch Leverage for {symbol}: {current_leverage}x | Target: {leverage}x | PosSize: {position_size}")
+                
                 if current_leverage != leverage and position_size == 0:
-                    logger.info(f"⚙️ Applying leverage for {symbol}: {current_leverage}x -> {leverage}x ({self.strategy_config.leverage_mode} mode)")
+                    logger.info(f"🚀 APPLYING LEVERAGE CHANGE: {current_leverage}x -> {leverage}x")
                     await self.exchange_client.change_leverage(symbol, leverage)
-                elif current_leverage != leverage and position_size > 0:
-                    logger.debug(f"Active position for {symbol}, keeping current {current_leverage}x")
+                elif current_leverage == leverage:
+                    logger.info(f"✅ Leverage already set to {leverage}x")
+                elif position_size > 0:
+                    logger.warning(f"⚠️ Cannot change leverage while position is active ({position_size} {symbol})")
                     leverage = current_leverage
             except Exception as e:
                 logger.warning(f"Leverage sync error: {e}")
