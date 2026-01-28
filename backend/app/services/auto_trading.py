@@ -840,6 +840,7 @@ class AutoTradingService:
         reason = "Wait"
         ai_opposes = False
         ai_agrees = False
+        signal_strength = 0
 
         if tech_signal:
              # Rule-based Signal Exists
@@ -1027,8 +1028,7 @@ class AutoTradingService:
             f"Final: {final_action_str} ({reason})"
         )
         
-        # 신호 강도 추출
-        signal_strength = tech_signal.get('strength', 0) if tech_signal else 0
+        # signal_strength is already initialized above
         
         # 5. Execute Order (Main)
         await self._execute_order(
