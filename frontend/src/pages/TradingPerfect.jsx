@@ -31,6 +31,9 @@ function TradingPerfect() {
   );
   const [aiMode, setAiMode] = useState('SCALP');
   const [aiLeverageMode, setAiLeverageMode] = useState('AUTO');
+  const [aiManualLeverage, setAiManualLeverage] = useState(10);
+  const [availableIntervals, setAvailableIntervals] = useState(['15m', '30m', '1h']);
+  const [selectedInterval, setSelectedInterval] = useState('15m');
 
   // Order Form State
   const [orderType, setOrderType] = useState('Limit');
@@ -78,6 +81,13 @@ function TradingPerfect() {
           const config = await configRes.json();
           if (config.status !== 'not_initialized') {
             setAiMode(config.mode || 'SCALP');
+            setAiLeverageMode(config.leverage_mode || 'AUTO');
+            setAiManualLeverage(config.manual_leverage || 10);
+            setAvailableIntervals(config.available_intervals || ['15m', '30m', '1h']);
+            setSelectedInterval(config.selected_interval || '15m');
+
+            // 🆕 Sync with Chart interval
+            setInterval(config.selected_interval || '15m');
           }
         }
         if (symRes.ok) {
@@ -196,6 +206,36 @@ function TradingPerfect() {
         alert(`❌ Error: ${err.detail || 'Failed'}`);
       }
     } catch (e) { alert('❌ Order Failed'); }
+  };
+
+  const updateStrategyConfig = async (updates) => {
+    try {
+      const res = await fetch('/api/trading/strategy/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        const config = data.config;
+        setAiMode(config.mode);
+        setAiLeverageMode(config.leverage_mode);
+        setAiManualLeverage(config.manual_leverage);
+        setAvailableIntervals(config.available_intervals || []);
+        setSelectedInterval(config.selected_interval);
+
+        // 🆕 Sync with Chart interval
+        setInterval(config.selected_interval);
+        localStorage.setItem('trading_interval', config.selected_interval);
+      } else {
+        alert(`❌ 설정 저장 실패: ${data.detail || '알 수 없는 오류'}`);
+      }
+    } catch (e) {
+      console.error('Failed to update strategy config:', e);
+      alert('❌ 서버 연결 오류');
+    }
   };
 
   const toggleAI = async () => {
@@ -660,6 +700,87 @@ function TradingPerfect() {
             <div style={{ padding: '12px', background: 'rgba(0,176,124,0.05)', border: '1px solid rgba(0,176,124,0.2)', borderRadius: '6px', textAlign: 'center' }}>
               <div style={{ fontSize: '0.6rem', color: '#00b07c', marginBottom: '4px' }}>AI RECOMMENDATION</div>
               <div style={{ fontSize: '0.85rem', fontWeight: '900', color: '#fff', letterSpacing: '1px' }}>CONSIDER LONG</div>
+            </div>
+
+            {/* AI Strategy Settings Section */}
+            <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid #1a1a1a' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#f59e0b', boxShadow: '0 0 10px #f59e0b' }} />
+                <span style={{ fontSize: '0.75rem', fontWeight: '900', color: '#fff' }}>STRATEGY SETTINGS</span>
+              </div>
+
+              {/* Trading Mode (Scalp/Swing) */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '0.65rem', color: '#444', fontWeight: '800', marginBottom: '8px', display: 'block' }}>TRADING MODE</label>
+                <div style={{ display: 'flex', gap: '4px', background: '#050505', padding: '3px', borderRadius: '6px' }}>
+                  {['SCALP', 'SWING'].map(m => (
+                    <button key={m} onClick={() => updateStrategyConfig({ mode: m })}
+                      style={{
+                        flex: 1, padding: '8px', border: 'none',
+                        background: aiMode === m ? '#1a1a1a' : 'transparent',
+                        color: aiMode === m ? '#fff' : '#444',
+                        borderRadius: '4px', fontSize: '0.7rem', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s'
+                      }}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Timeframe */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '0.65rem', color: '#444', fontWeight: '800', marginBottom: '8px', display: 'block' }}>TIMEFRAME</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '4px' }}>
+                  {availableIntervals.map(inv => (
+                    <button key={inv} onClick={() => updateStrategyConfig({ selected_interval: inv })}
+                      style={{
+                        padding: '6px', fontSize: '0.65rem',
+                        background: selectedInterval === inv ? 'rgba(240,185,11,0.1)' : '#0d0d0d',
+                        border: `1px solid ${selectedInterval === inv ? '#f0b90b' : '#1a1a1a'}`,
+                        color: selectedInterval === inv ? '#f0b90b' : '#666',
+                        borderRadius: '4px', cursor: 'pointer', fontWeight: '800'
+                      }}>
+                      {inv}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Leverage Mode (Auto/Manual) */}
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '0.65rem', color: '#444', fontWeight: '800', marginBottom: '8px', display: 'block' }}>AI LEVERAGE MODE</label>
+                <div style={{ display: 'flex', gap: '4px', background: '#050505', padding: '3px', borderRadius: '6px' }}>
+                  {['AUTO', 'MANUAL'].map(m => (
+                    <button key={m} onClick={() => updateStrategyConfig({ leverage_mode: m })}
+                      style={{
+                        flex: 1, padding: '8px', border: 'none',
+                        background: aiLeverageMode === m ? '#1a1a1a' : 'transparent',
+                        color: aiLeverageMode === m ? '#fff' : '#444',
+                        borderRadius: '4px', fontSize: '0.7rem', fontWeight: '800', cursor: 'pointer', transition: 'all 0.2s'
+                      }}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Manual Leverage Value Input */}
+              {aiLeverageMode === 'MANUAL' && (
+                <div style={{ marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.65rem', marginBottom: '6px' }}>
+                    <span style={{ color: '#444' }}>MANUAL LEVERAGE</span>
+                    <span style={{ color: '#f0b90b', fontWeight: '900' }}>{aiManualLeverage}x</span>
+                  </div>
+                  <input
+                    type="range" min="1" max="10"
+                    value={aiManualLeverage}
+                    onChange={e => setAiManualLeverage(parseInt(e.target.value))}
+                    onMouseUp={() => updateStrategyConfig({ manual_leverage: aiManualLeverage })}
+                    onTouchEnd={() => updateStrategyConfig({ manual_leverage: aiManualLeverage })}
+                    style={{ width: '100%', accentColor: '#f0b90b' }}
+                  />
+                </div>
+              )}
             </div>
           </div>
 

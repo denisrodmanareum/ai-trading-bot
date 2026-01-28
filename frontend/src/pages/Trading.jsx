@@ -454,8 +454,94 @@ function Trading() {
               ))}
             </div>
 
+            {/* Trading Mode Selection */}
+            <div style={{ marginTop: '0.5rem' }}>
+              <label style={{ fontSize: '0.7rem', fontWeight: '800', color: '#888', marginBottom: '0.5rem', display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Trading Mode
+              </label>
+              <select
+                value={strategy.mode || 'SCALP'}
+                onChange={(e) => updateStrategy({ mode: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem',
+                  background: '#000',
+                  border: '1px solid var(--border-dim)',
+                  borderRadius: '2px',
+                  color: '#fff',
+                  fontSize: '0.75rem',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  outline: 'none'
+                }}
+              >
+                <option value="SCALP">SCALP (단타)</option>
+                <option value="SWING">SWING (스윙)</option>
+              </select>
+            </div>
+
+            {/* Leverage Mode Selection */}
+            <div style={{ marginTop: '0.75rem' }}>
+              <label style={{ fontSize: '0.7rem', fontWeight: '800', color: '#888', marginBottom: '0.5rem', display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Leverage Mode
+              </label>
+              <select
+                value={strategy.leverage_mode || 'AUTO'}
+                onChange={(e) => updateStrategy({ leverage_mode: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem',
+                  background: '#000',
+                  border: '1px solid var(--border-dim)',
+                  borderRadius: '2px',
+                  color: '#fff',
+                  fontSize: '0.75rem',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  outline: 'none'
+                }}
+              >
+                <option value="AUTO">AUTO (자동)</option>
+                <option value="MANUAL">MANUAL (수동)</option>
+              </select>
+            </div>
+
+            {/* Manual Leverage Input */}
+            {strategy.leverage_mode === 'MANUAL' && (
+              <div style={{ marginTop: '0.75rem' }}>
+                <label style={{ fontSize: '0.7rem', fontWeight: '800', color: '#888', marginBottom: '0.5rem', display: 'block', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Manual Leverage (1-10x)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={strategy.manual_leverage || 5}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value);
+                    setStrategy({ ...strategy, manual_leverage: value });
+                    setForm({ ...form, leverage: value });
+                    setLeverageValue(value);
+                  }}
+                  onBlur={() => updateStrategy({ manual_leverage: strategy.manual_leverage || 5 })}
+                  style={{
+                    width: '100%',
+                    padding: '0.6rem',
+                    background: '#000',
+                    border: '1px solid var(--border-dim)',
+                    borderRadius: '2px',
+                    color: '#fff',
+                    fontSize: '0.75rem',
+                    fontWeight: '800',
+                    fontFamily: 'var(--font-mono)',
+                    outline: 'none'
+                  }}
+                />
+              </div>
+            )}
+
             {/* Margin/Leverage */}
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
               <div
                 onClick={() => setMarginMode(marginMode === 'Isolated' ? 'Cross' : 'Isolated')}
                 style={{
@@ -579,7 +665,7 @@ function Trading() {
               onClick={() => handleOrder(activeTradeTab === 'Open' ? 'BUY' : 'SELL')}
               disabled={loading}
               style={{
-                marginTop: '0.4rem',
+                marginTop: '0.75rem',
                 background: activeTradeTab === 'Open' ? '#00b07c' : '#ff5b5b',
                 color: '#000',
                 border: 'none',

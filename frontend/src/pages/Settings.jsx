@@ -16,13 +16,6 @@ function Settings() {
     current_margin_level: 0.0
   });
 
-  const [strategyConfig, setStrategyConfig] = useState({
-    mode: 'SCALP',
-    selected_interval: '15m',
-    available_intervals: ['15m', '30m'],
-    leverage_mode: 'AUTO',
-    manual_leverage: 5
-  });
 
   // Notification States
   const [notifications, setNotifications] = useState({
@@ -67,7 +60,6 @@ function Settings() {
 
   useEffect(() => {
     fetchRiskStatus();
-    fetchStrategyConfig();
     fetchNotificationSettings();
     fetchTelegramSettings();
     fetchApiConfig();
@@ -88,19 +80,6 @@ function Settings() {
     }
   };
 
-  const fetchStrategyConfig = async () => {
-    try {
-      const res = await fetch('/api/trading/strategy/config');
-      if (res.ok) {
-        const data = await res.json();
-        if (data.status !== 'not_initialized') {
-          setStrategyConfig(data);
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
   const fetchNotificationSettings = async () => {
     try {
@@ -321,21 +300,6 @@ function Settings() {
     }
   };
 
-  const updateStrategyConfig = async (updates) => {
-    try {
-      const res = await fetch('/api/trading/strategy/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      });
-      if (res.ok) {
-        alert('Strategy updated!');
-        fetchStrategyConfig();
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
 
   const toggleKillSwitch = async () => {
     await updateRiskConfig({ kill_switch: !riskStatus.kill_switch });
@@ -629,85 +593,6 @@ function Settings() {
               </div>
             </div>
 
-            {/* Strategy Configuration */}
-            <div style={{
-              background: '#0a0a0a',
-              border: '1px solid #222',
-              borderRadius: '4px',
-              padding: '1.5rem'
-            }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: '800', marginBottom: '1rem', color: '#fff' }}>
-                Strategy Configuration
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem', display: 'block' }}>
-                    Trading Mode
-                  </label>
-                  <select
-                    value={strategyConfig.mode}
-                    onChange={(e) => updateStrategyConfig({ mode: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      background: '#000',
-                      border: '1px solid #222',
-                      borderRadius: '2px',
-                      color: '#fff',
-                      fontSize: '0.85rem'
-                    }}
-                  >
-                    <option value="SCALP">SCALP (단타)</option>
-                    <option value="SWING">SWING (스윙)</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem', display: 'block' }}>
-                    Leverage Mode
-                  </label>
-                  <select
-                    value={strategyConfig.leverage_mode}
-                    onChange={(e) => updateStrategyConfig({ leverage_mode: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem',
-                      background: '#000',
-                      border: '1px solid #222',
-                      borderRadius: '2px',
-                      color: '#fff',
-                      fontSize: '0.85rem'
-                    }}
-                  >
-                    <option value="AUTO">AUTO (자동)</option>
-                    <option value="MANUAL">MANUAL (수동)</option>
-                  </select>
-                </div>
-                {strategyConfig.leverage_mode === 'MANUAL' && (
-                  <div>
-                    <label style={{ fontSize: '0.8rem', color: '#666', marginBottom: '0.5rem', display: 'block' }}>
-                      Manual Leverage (1-10x)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="10"
-                      value={strategyConfig.manual_leverage}
-                      onChange={(e) => setStrategyConfig({ ...strategyConfig, manual_leverage: parseInt(e.target.value) })}
-                      onBlur={() => updateStrategyConfig({ manual_leverage: strategyConfig.manual_leverage })}
-                      style={{
-                        width: '100%',
-                        padding: '0.75rem',
-                        background: '#000',
-                        border: '1px solid #222',
-                        borderRadius: '2px',
-                        color: '#fff',
-                        fontSize: '0.85rem'
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
         )}
 

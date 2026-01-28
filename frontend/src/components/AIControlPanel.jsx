@@ -17,15 +17,15 @@ const AIControlPanel = ({ strategy, updateStrategy, activeSymbol, executionStatu
                 {['SCALP', 'SWING'].map(mode => (
                     <button
                         key={mode}
-                        onClick={() => updateStrategy({ trade_mode: mode })}
+                        onClick={() => updateStrategy({ mode: mode })}
                         style={{
                             padding: '0.5rem',
                             fontSize: '0.7rem',
                             fontWeight: '900',
                             border: 'none',
                             borderRadius: '1px',
-                            background: strategy.trade_mode === mode ? '#151515' : 'transparent',
-                            color: strategy.trade_mode === mode ? '#fff' : '#444',
+                            background: (strategy.mode || strategy.trade_mode) === mode ? '#151515' : 'transparent',
+                            color: (strategy.mode || strategy.trade_mode) === mode ? '#fff' : '#444',
                             cursor: 'pointer',
                             textTransform: 'uppercase',
                             letterSpacing: '0.05em'
@@ -61,7 +61,7 @@ const AIControlPanel = ({ strategy, updateStrategy, activeSymbol, executionStatu
                 overflowY: 'auto'
             }}>
                 <div style={{ color: '#aaa', fontWeight: 'bold' }}>[SYSTEM] AI initialized on {activeSymbol}</div>
-                <div>[ACTION] Analyzing {strategy.trade_mode} patterns...</div>
+                <div>[ACTION] Analyzing {strategy.mode || strategy.trade_mode || 'SCALP'} patterns...</div>
                 <div>[SIGNAL] Neutral bias detected</div>
             </div>
 
