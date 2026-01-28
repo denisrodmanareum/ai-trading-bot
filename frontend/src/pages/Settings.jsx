@@ -43,8 +43,6 @@ function Settings() {
     active_exchange: 'BINANCE',
     binance_key: '',
     binance_secret: '',
-    bybit_key: '',
-    bybit_secret: '',
     testnet: false
   });
 
@@ -713,7 +711,7 @@ function Settings() {
                 <div>
                   <div style={{ fontSize: '0.9rem', fontWeight: '900', color: '#fff' }}>Testnet Mode</div>
                   <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem' }}>
-                    실제 자산이 아닌 테스트넷 환경 사용 (Binance/Bybit 공통 적용)
+                    실제 자산이 아닌 테스트넷 환경 사용 (Binance 전용)
                   </div>
                 </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
@@ -774,7 +772,7 @@ function Settings() {
                   boxShadow: '0 4px 20px rgba(240, 185, 11, 0.2)'
                 }}
               >
-                {saving ? 'Saving & Reconnecting...' : 'Save Multi-Exchange Configuration'}
+                {saving ? 'Saving & Reconnecting...' : 'Save API Configuration'}
               </button>
 
             </div>

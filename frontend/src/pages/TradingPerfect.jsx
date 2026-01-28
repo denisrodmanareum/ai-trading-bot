@@ -302,32 +302,7 @@ function TradingPerfect() {
         background: '#0a0a0a',
         zIndex: 10
       }}>
-        {/* Exchange Selector */}
-        <div style={{
-          display: 'flex',
-          background: '#111',
-          padding: '2px',
-          borderRadius: '4px',
-          border: '1px solid #222'
-        }}>
-          {['BINANCE', 'BYBIT'].map(ex => (
-            <div
-              key={ex}
-              style={{
-                padding: '4px 8px',
-                fontSize: '0.65rem',
-                fontWeight: '900',
-                cursor: 'default',
-                borderRadius: '3px',
-                background: activeExchange === ex ? '#f0b90b' : 'transparent',
-                color: activeExchange === ex ? '#000' : '#444',
-                opacity: activeExchange === ex ? 1 : 0.5
-              }}
-            >
-              {ex}
-            </div>
-          ))}
-        </div>
+        {/* Trading Symbol Selector */}
 
         <div style={{ position: 'relative' }}>
           <div

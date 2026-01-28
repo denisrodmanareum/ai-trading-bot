@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     BINANCE_TESTNET: bool = True
     
     # Active Exchange
-    ACTIVE_EXCHANGE: str = "BINANCE" # BINANCE or BYBIT
+    ACTIVE_EXCHANGE: str = "BINANCE"
     
     # Trading
     INITIAL_BALANCE: float = 10000.0

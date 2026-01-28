@@ -320,9 +320,7 @@ async def update_api_config(config: ApiConfigUpdate):
                     found = True
                     break
             if not found:
-                # Remove old Bybit keys if present
-                if not line.startswith("BYBIT_"):
-                    new_lines.append(line)
+                new_lines.append(line)
                 
         for k in keys:
             if k not in handled:
