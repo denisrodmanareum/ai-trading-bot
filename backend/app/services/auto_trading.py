@@ -914,71 +914,9 @@ class AutoTradingService:
                  reason = f"Rule+AI_{tech_signal.get('reason', 'Signal')}"
                  logger.info(f"✅ AI Agreement (Confidence: {ai_confidence:.1%})")
              
-             else:
-                 # Normal case - follow rule
-                 final_action = rule_action_id
-                 reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
-                 
-                 # --- LEVERAGE LOGIC (Enhanced with Regime) ---
-                 if self.strategy_config.leverage_mode == "MANUAL":
-                     leverage = self.strategy_config.manual_leverage
-                 else:
-                     base_leverage = tech_signal.get('leverage', 5)
-                     is_core = symbol in self.risk_config.core_coins
-                     
-                     # 🆕 잔고 기반 동적 레버리지 (AI + 변동성 + 신호 강도 종합)
-                     try:
-                         account = await self.exchange_client.get_account_info()
-                         current_balance = account['balance']
-                         
-                         # 시장 변동성 계산 (간단히 ATR 비율 사용)
-                         market_volatility = market_state.get('atr', 0.02) / float(data.get('close', 1))
-                         
-                         # AI 동적 레버리지 계산
-                         leverage = self.balance_strategy.calculate_dynamic_leverage(
-                             balance=current_balance,
-                             ai_confidence=ai_confidence,
-                             signal_strength=signal_strength,
-                             market_volatility=market_volatility,
-                             is_core=is_core
-                         )
-                         
-                         logger.info(
-                             f"🎲 Dynamic Leverage: {leverage}x "
-                             f"(Balance: {current_balance:.0f} USDT, "
-                             f"AI Conf: {ai_confidence:.1%}, "
-                             f"Signal: {signal_strength}/5, "
-                             f"Vol: {market_volatility:.2%})"
-                         )
-                     except Exception as e:
-                         logger.warning(f"Dynamic leverage calculation failed: {e}, using fallback")
-                         # Fallback: 기존 로직
-                         leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime, symbol)
-                         if is_core:
-                             if ai_agrees and ai_confidence >= 0.90:
-                                 leverage = min(20, int(leverage * 1.5))
-                             elif ai_agrees and ai_confidence >= 0.80:
-                                 leverage = min(15, int(leverage * 1.2))
-                         else:
-                             leverage = min(5, leverage)
-                 # ----------------------
-                 
-                 reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
-                 
-                 # Apply Leverage (only if no position and different from current)
-                 try:
-                     current_leverage = int(position.get('leverage', 5))
-                     position_size = abs(float(position.get('position_amt', 0)))
-                     
-                     if current_leverage != leverage and position_size == 0:
-                         logger.info(f"⚙️ Applying leverage for {symbol}: {current_leverage}x -> {leverage}x ({self.strategy_config.leverage_mode} mode)")
-                         await self.exchange_client.change_leverage(symbol, leverage)
-                     elif current_leverage != leverage and position_size > 0:
-                         logger.debug(f"Position active for {symbol}, using current leverage {current_leverage}x (Wanted: {leverage}x)")
-                         leverage = current_leverage # Cannot change with position
-                 except Exception as e:
-                     logger.warning(f"Failed to sync leverage for {symbol}: {e}")
-                     leverage = int(position.get('leverage', 5))
+                # Normal case - follow rule
+                final_action = rule_action_id
+                reason = f"Rule_{tech_signal.get('reason', 'Signal')}"
 
 
         else:
@@ -1005,6 +943,47 @@ class AutoTradingService:
             else:
                 final_action = 0 # No rule = No trade
                 reason = "No_Signal"
+        
+        # 6. 🔧 CENTRALIZED LEVERAGE LOGIC (Always respected)
+        if final_action in [1, 2]: # Entering LONG or SHORT
+            if self.strategy_config.leverage_mode == "MANUAL":
+                leverage = self.strategy_config.manual_leverage
+                logger.debug(f"Using MANUAL leverage: {leverage}x for {symbol}")
+            else:
+                # Dynamic Logic for AUTO mode
+                base_leverage = tech_signal.get('leverage', 5) if tech_signal else 5
+                is_core = symbol in self.risk_config.core_coins
+                
+                try:
+                    account = await self.exchange_client.get_account_info()
+                    current_balance = account['balance']
+                    market_volatility = market_state.get('atr', 0.02) / float(data.get('close', 1))
+                    
+                    leverage = self.balance_strategy.calculate_dynamic_leverage(
+                        balance=current_balance,
+                        ai_confidence=ai_confidence,
+                        signal_strength=signal_strength,
+                        market_volatility=market_volatility,
+                        is_core=is_core
+                    )
+                except Exception as e:
+                    logger.warning(f"Dynamic leverage calculation failed: {e}, using fallback regime adjustment")
+                    leverage = self.regime_detector.adjust_leverage(base_leverage, current_regime, symbol)
+            
+            # 7. Apply Leverage to Exchange
+            try:
+                current_leverage = int(position.get('leverage', 5))
+                position_size = abs(float(position.get('position_amt', 0)))
+                
+                if current_leverage != leverage and position_size == 0:
+                    logger.info(f"⚙️ Applying leverage for {symbol}: {current_leverage}x -> {leverage}x ({self.strategy_config.leverage_mode} mode)")
+                    await self.exchange_client.change_leverage(symbol, leverage)
+                elif current_leverage != leverage and position_size > 0:
+                    logger.debug(f"Active position for {symbol}, keeping current {current_leverage}x")
+                    leverage = current_leverage
+            except Exception as e:
+                logger.warning(f"Leverage sync error: {e}")
+                leverage = int(position.get('leverage', 5))
         
         final_action_str = ["HOLD", "LONG", "SHORT", "CLOSE"][final_action]
         
