@@ -347,9 +347,9 @@ class BinanceClient(BaseExchangeClient):
         try:
             return await self.client.futures_change_leverage(symbol=symbol, leverage=leverage)
         except Exception as e:
-            # Leverage change can fail if position exists - not critical
-            logger.debug(f"Leverage change skipped for {symbol}: {e}")
-            return None  # Return None instead of raising, let caller handle it
+            # Leverage change can fail if position exists - not critical but good to know
+            logger.warning(f"⚠️ Leverage change skipped/failed for {symbol}: {e}")
+            return None 
 
     async def get_order_book(self, symbol="BTCUSDT", limit=10):
         """Get order book depth"""

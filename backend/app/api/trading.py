@@ -383,8 +383,10 @@ async def update_strategy_config(config: StrategyConfigRequest):
     
     if config.leverage_mode:
         s_config.leverage_mode = config.leverage_mode
+        logger.info(f"⚙️ API: Leverage mode updated to {config.leverage_mode}")
     if config.manual_leverage:
-        s_config.manual_leverage = config.manual_leverage
+        s_config.manual_leverage = int(config.manual_leverage)
+        logger.info(f"⚙️ API: Manual leverage updated to {config.manual_leverage}x")
         
     return {"status": "updated", "config": {
         "mode": s_config.mode,

@@ -1213,26 +1213,25 @@ class AutoTradingService:
                     is_btc_only=is_btc_only
                 )
                 
+                # 🔧 INTEGRATION: Scaling position by MANUAL leverage
+                # If user sets 10x manual leverage, they likely expect 2x larger position than the 5x baseline.
+                if self.strategy_config.leverage_mode == "MANUAL":
+                    leverage_scaling = self.strategy_config.manual_leverage / 5.0
+                    base_notional *= leverage_scaling
+                    logger.info(f"⚖️ Manual Leverage Scaling: {self.strategy_config.manual_leverage}x -> Ratio {leverage_scaling:.1f}x | Size: {base_notional:.0f} USDT")
+
                 # 티어 정보 로깅
                 tier_info = self.balance_strategy.get_current_tier(current_balance)
                 mode_str = "BTC_ONLY" if is_btc_only else "HYBRID"
                 logger.info(
                     f"💰 Dynamic Sizing [{tier_info['tier_name']} Tier | {mode_str}]: {symbol} = "
                     f"{base_notional:.0f} USDT "
-                    f"(Balance: {current_balance:.0f}, AI Conf: {ai_conf:.1%}, "
-                    f"Recent Winrate: {self.balance_strategy.get_recent_winrate():.1%}"
+                    f"(Balance: {current_balance:.0f}, AI Conf: {ai_conf:.1%})"
                 )
             except Exception as e:
                 logger.warning(f"Dynamic sizing failed: {e}, using fallback")
-                # Fallback: 기존 로직
-                is_btc_only = coin_selector.config.get('mode') == 'BTC_ONLY'
-                base_notional = self.balance_strategy.calculate_dynamic_position_size(
-                    balance=current_balance, 
-                    ai_confidence=ai_conf, 
-                    is_core=is_core,
-                    is_btc_only=is_btc_only
-                )
-                
+                base_notional = 150.0 # Default fallback
+        
         elif self.risk_config.position_mode == "RATIO":
             # RATIO mode: 잔고의 고정 %
             base_notional = current_balance * self.risk_config.position_ratio
